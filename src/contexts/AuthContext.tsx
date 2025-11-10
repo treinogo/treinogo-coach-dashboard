@@ -65,7 +65,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } else {
           // Try automatic login with coach credentials for development
           try {
-            const loginResponse = await fetch('http://localhost:3001/api/auth/login', {
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+            const loginResponse = await fetch(`${apiBaseUrl}/auth/login`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

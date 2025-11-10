@@ -1,5 +1,5 @@
 // API configuration and client  
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 // Get token from localStorage
 const getAuthToken = (): string | null => {
@@ -91,7 +91,8 @@ export const authService = {
 
   logout(): void {
     removeAuthToken();
-    window.location.href = 'http://localhost:5173'; // URL do landing page
+    const landingUrl = import.meta.env.VITE_LANDING_PAGE_URL || 'http://localhost:5173';
+    window.location.href = landingUrl;
   },
 
   async validateToken(): Promise<boolean> {
