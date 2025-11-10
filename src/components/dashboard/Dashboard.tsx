@@ -78,7 +78,12 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         ]);
         
         setDashboardMetrics(metricsResponse.metrics);
-        setTreinosStats(trainingStatsResponse.treinosRealizadosPorMes || []);
+        // Map month numbers to names for chart display
+        const mappedStats = (trainingStatsResponse.treinosRealizadosPorMes || []).map((stat: any) => ({
+          ...stat,
+          mes: MESES[stat.mes - 1]?.abrev || stat.mes
+        }));
+        setTreinosStats(mappedStats);
       } catch (error) {
         console.error('Error loading dashboard data:', error);
         // Keep empty data on error, no fallbacks
@@ -214,18 +219,23 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   // Custom tooltip para o gráfico
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const avgPerAluno = data.alunos > 0 ? Math.round(payload[0].value / data.alunos) : 0;
+      
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-          <p className="font-medium text-gray-900">{payload[0].payload.mes}</p>
+          <p className="font-medium text-gray-900">{data.mes}</p>
           <p className="text-sm text-blue-600">
             Treinos: <span className="font-medium">{payload[0].value}</span>
           </p>
           <p className="text-sm text-gray-600">
-            Alunos ativos: {payload[0].payload.alunos}
+            Alunos ativos: {data.alunos}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Média: {Math.round(payload[0].value / payload[0].payload.alunos)} treinos/aluno
-          </p>
+          {data.alunos > 0 && (
+            <p className="text-xs text-gray-500 mt-1">
+              Média: {avgPerAluno} treinos/aluno
+            </p>
+          )}
         </div>
       );
     }
