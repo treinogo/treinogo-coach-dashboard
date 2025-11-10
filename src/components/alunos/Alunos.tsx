@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Users, Search, Filter, UserPlus, Eye, Edit, FileText, Link2, Copy, Check, Trash2, CheckCircle, XCircle, MoreVertical } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { Skeleton } from '../ui/skeleton';
 import {
   Table,
   TableBody,
@@ -36,12 +37,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { alunosMock } from '../../lib/mockData';
+// Mock data removed - using real API data only
+import { AlunosService } from '../../lib/services';
 import { AlunoPerfil } from './AlunoPerfil';
 import { AlunoAdicionar } from './AlunoAdicionar';
 import { AlunoEditar } from './AlunoEditar';
 import { Aluno } from '../../types';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 type ViewMode = 'list' | 'profile' | 'add' | 'edit';
 
@@ -53,12 +55,36 @@ export function Alunos() {
   const [alunoSelecionado, setAlunoSelecionado] = useState<string | null>(null);
   const [linkCopiado, setLinkCopiado] = useState(false);
   const [alunoParaExcluir, setAlunoParaExcluir] = useState<string | null>(null);
+  
+  // Real data from API
+  const [alunos, setAlunos] = useState<Aluno[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Código de convite gerado
   const codigoConvite = 'RUNCOACH-2024-ABC123';
   const linkConvite = `https://runcoachpro.com/cadastro?ref=${codigoConvite}`;
 
-  const alunosFiltrados = alunosMock.filter((aluno) => {
+  // Load alunos data
+  useEffect(() => {
+    const loadAlunos = async () => {
+      try {
+        setLoading(true);
+        const alunosData = await AlunosService.getAthletes();
+        setAlunos(alunosData);
+            } catch (error) {
+        console.error('Erro ao carregar alunos:', error);
+        toast.error('Erro ao carregar alunos');
+        // Keep empty array on error, no fallbacks
+        setAlunos([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAlunos();
+  }, []);
+
+  const alunosFiltrados = alunos.filter((aluno: any) => {
     const matchBusca = aluno.nome.toLowerCase().includes(busca.toLowerCase());
     const matchNivel = filtroNivel === 'todos' || aluno.nivel === filtroNivel;
     const matchStatus = filtroStatus === 'todos' || aluno.status === filtroStatus;
@@ -80,43 +106,107 @@ export function Alunos() {
     }
   };
 
-  const handleAdicionarAluno = (novoAluno: Partial<Aluno>) => {
-    // Em produção, aqui seria feita a chamada à API
-    console.log('Novo aluno:', novoAluno);
+  const handleAdicionarAluno = async (novoAluno: Partial<Aluno>) => {
+    try {
+      setLoading(true);
+      const response = await AlunosService.createAthlete({
+        nome: novoAluno.nome,
+        email: novoAluno.email,
+        telefone: novoAluno.telefone,
+        idade: novoAluno.idade
+      });
+
+      // Reload the athletes list to get the latest data
+      const alunosData = await AlunosService.getAthletes();
+      setAlunos(alunosData);
+      
+      toast.success('✅ Aluno adicionado com sucesso!', {
+        description: `${novoAluno.nome} foi cadastrado na turma.`,
+      });
+    } catch (error) {
+      console.error('Error adding athlete:', error);
+      toast.error('Erro ao adicionar aluno', {
+        description: 'Não foi possível cadastrar o aluno. Tente novamente.',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleEditarAluno = (alunoAtualizado: Aluno) => {
-    // Em produção, aqui seria feita a chamada à API
-    console.log('Aluno atualizado:', alunoAtualizado);
+  const handleEditarAluno = async (alunoAtualizado: Aluno) => {
+    try {
+      setLoading(true);
+      await AlunosService.updateAthlete(alunoAtualizado.id, {
+        nome: alunoAtualizado.nome,
+        email: alunoAtualizado.email,
+        telefone: alunoAtualizado.telefone,
+        idade: alunoAtualizado.idade
+      });
+      
+      // Recarregar lista de alunos do backend
+      const alunosData = await AlunosService.getAthletes();
+      setAlunos(alunosData);
+      
+      toast.success('✅ Aluno atualizado!', {
+        description: `${alunoAtualizado.nome} foi atualizado com sucesso.`,
+      });
+      
+      setViewMode('list');
+    } catch (error) {
+      console.error('Erro ao editar aluno:', error);
+      toast.error('❌ Erro ao editar aluno', {
+        description: 'Tente novamente ou verifique os dados.',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAtivarAluno = (alunoId: string) => {
-    const aluno = alunosMock.find(a => a.id === alunoId);
+    const aluno = alunos.find((a: any) => a.id === alunoId);
     toast.success('Aluno ativado', {
       description: `${aluno?.nome} foi ativado com sucesso.`,
     });
   };
 
   const handleInativarAluno = (alunoId: string) => {
-    const aluno = alunosMock.find(a => a.id === alunoId);
+    const aluno = alunos.find((a: any) => a.id === alunoId);
     toast.success('Aluno inativado', {
       description: `${aluno?.nome} foi inativado.`,
     });
   };
 
-  const handleExcluirAluno = () => {
+  const handleExcluirAluno = async () => {
     if (alunoParaExcluir) {
-      const aluno = alunosMock.find(a => a.id === alunoParaExcluir);
-      toast.success('Aluno excluído', {
-        description: `${aluno?.nome} foi removido do sistema.`,
-      });
-      setAlunoParaExcluir(null);
+      try {
+        setLoading(true);
+        const aluno = alunos.find((a: any) => a.id === alunoParaExcluir);
+        await AlunosService.deleteAthlete(alunoParaExcluir);
+        
+        // Recarregar lista de alunos do backend
+        const alunosData = await AlunosService.getAthletes();
+        setAlunos(alunosData);
+        
+        toast.success('✅ Aluno excluído', {
+          description: `${aluno?.nome} foi removido do sistema.`,
+        });
+        
+        setAlunoParaExcluir(null);
+      } catch (error) {
+        console.error('Erro ao excluir aluno:', error);
+        toast.error('❌ Erro ao excluir aluno', {
+          description: 'Tente novamente.',
+        });
+        setAlunoParaExcluir(null);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
   // Renderizar views diferentes
   if (viewMode === 'profile' && alunoSelecionado) {
-    const aluno = alunosMock.find((a) => a.id === alunoSelecionado);
+    const aluno = alunos.find((a: any) => a.id === alunoSelecionado);
     if (aluno) {
       return <AlunoPerfil aluno={aluno} onVoltar={() => setViewMode('list')} />;
     }
@@ -132,7 +222,7 @@ export function Alunos() {
   }
 
   if (viewMode === 'edit' && alunoSelecionado) {
-    const aluno = alunosMock.find((a) => a.id === alunoSelecionado);
+    const aluno = alunos.find((a: any) => a.id === alunoSelecionado);
     if (aluno) {
       return (
         <AlunoEditar
@@ -184,13 +274,61 @@ export function Alunos() {
   };
 
   const estatisticas = {
-    total: alunosMock.length,
-    ativos: alunosMock.filter((a) => a.status === 'Ativo').length,
-    pendentes: alunosMock.filter((a) => a.status === 'Pendente').length,
-    iniciante: alunosMock.filter((a) => a.nivel === 'Iniciante').length,
-    intermediario: alunosMock.filter((a) => a.nivel === 'Intermediário').length,
-    avancado: alunosMock.filter((a) => a.nivel === 'Avançado').length,
+    total: alunos.length,
+    ativos: alunos.filter((a: any) => a.status === 'Ativo').length,
+    pendentes: alunos.filter((a: any) => a.status === 'Pendente').length,
+    iniciante: alunos.filter((a: any) => a.nivel === 'Iniciante').length,
+    intermediario: alunos.filter((a: any) => a.nivel === 'Intermediário').length,
+    avancado: alunos.filter((a: any) => a.nivel === 'Avançado').length,
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <Skeleton className="h-7 w-32 mb-2" />
+                <Skeleton className="h-4 w-48" />
+              </div>
+              <Skeleton className="h-10 w-32" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                  <Skeleton className="h-3 w-16 mb-2" />
+                  <Skeleton className="h-8 w-12" />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-48" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {Array.from({ length: 5 }).map((_, idx) => (
+                <div key={idx} className="flex items-center gap-4 p-4 border rounded-lg">
+                  <Skeleton className="w-10 h-10 rounded-full" />
+                  <div className="flex-1">
+                    <Skeleton className="h-4 w-32 mb-2" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                  <Skeleton className="h-6 w-16" />
+                  <Skeleton className="h-8 w-8 rounded" />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -414,14 +552,14 @@ export function Alunos() {
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuTrigger asChild onClick={(e: React.MouseEvent) => e.stopPropagation()}>
                             <Button variant="ghost" size="icon">
                               <MoreVertical className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={(e) => {
+                              onClick={(e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 setAlunoSelecionado(aluno.id);
                                 setViewMode('edit');
@@ -432,7 +570,7 @@ export function Alunos() {
                             </DropdownMenuItem>
                             {aluno.status === 'Ativo' ? (
                               <DropdownMenuItem
-                                onClick={(e) => {
+                                onClick={(e: React.MouseEvent) => {
                                   e.stopPropagation();
                                   handleInativarAluno(aluno.id);
                                 }}
@@ -442,7 +580,7 @@ export function Alunos() {
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem
-                                onClick={(e) => {
+                                onClick={(e: React.MouseEvent) => {
                                   e.stopPropagation();
                                   handleAtivarAluno(aluno.id);
                                 }}
@@ -452,7 +590,7 @@ export function Alunos() {
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem
-                              onClick={(e) => {
+                              onClick={(e: React.MouseEvent) => {
                                 e.stopPropagation();
                                 setAlunoParaExcluir(aluno.id);
                               }}

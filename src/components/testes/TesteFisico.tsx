@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Activity, Plus, Calendar, User, Clock, TrendingUp, Filter } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -37,9 +37,9 @@ import {
 } from '../ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Separator } from '../ui/separator';
-import { testesFisicosMock, alunosMock } from '../../lib/mockData';
-import { toast } from 'sonner@2.0.3';
-import { TipoTesteFisico } from '../../types';
+import { TestesService, AlunosService } from '../../lib/services';
+import { toast } from 'sonner';
+import { TipoTesteFisico, TesteFisico as TesteFisicoType, Aluno } from '../../types';
 
 interface ZonasTreino {
   z1: string;
@@ -59,6 +59,33 @@ export function TesteFisico() {
   const [filtroTipo, setFiltroTipo] = useState('todos');
   const [zonasTreino, setZonasTreino] = useState<ZonasTreino | null>(null);
   const [alunoPerfilAberto, setAlunoPerfilAberto] = useState<string | null>(null);
+
+  // Estados para dados da API
+  const [testes, setTestes] = useState<TesteFisicoType[]>([]);
+  const [alunos, setAlunos] = useState<Aluno[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Carrega dados iniciais
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [testesData, alunosData] = await Promise.all([
+          TestesService.getTests(),
+          AlunosService.getAthletes()
+        ]);
+        setTestes(testesData.tests || []);
+        setAlunos(alunosData);
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+        toast.error('Erro ao carregar dados');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
 
   // Converter pace string para segundos
   const paceParaSegundos = (paceStr: string): number => {
@@ -185,7 +212,7 @@ export function TesteFisico() {
     }
   };
 
-  const handleSalvarTeste = () => {
+  const handleSalvarTeste = async () => {
     if (!alunoSelecionado || !tipoTeste || !pace || !tempoFinal) {
       toast.error('Erro ao salvar teste', {
         description: 'Preencha todos os campos obrigatórios',
@@ -193,21 +220,50 @@ export function TesteFisico() {
       return;
     }
 
-    const aluno = alunosMock.find(a => a.id === alunoSelecionado);
-    toast.success('✅ Teste físico salvo com sucesso', {
-      description: `Teste de ${tipoTeste} registrado para ${aluno?.nome}`,
-    });
+    try {
+      // Find the selected athlete to get the correct athleteId
+      const aluno = alunos.find(a => a.id === alunoSelecionado);
+      if (!aluno || !aluno.athleteId) {
+        toast.error('Atleta não encontrado');
+        return;
+      }
 
-    setShowNovoTeste(false);
-    setAlunoSelecionado('');
-    setTipoTeste('5km');
-    setPace('');
-    setTempoFinal('');
-    setZonasTreino(null);
+      const novoTeste = await TestesService.createTest({
+        alunoId: aluno.athleteId, // Use athleteId instead of user id
+        tipoTeste,
+        pace,
+        tempoFinal,
+        data: new Date()
+      });
+      
+      // Adiciona o novo teste à lista local
+      setTestes(prev => [novoTeste.test, ...prev]);
+      
+      toast.success('✅ Teste físico salvo com sucesso', {
+        description: `Teste de ${tipoTeste} registrado para ${aluno?.nome}`,
+      });
+
+      setShowNovoTeste(false);
+      setAlunoSelecionado('');
+      setTipoTeste('5km');
+      setPace('');
+      setTempoFinal('');
+      setZonasTreino(null);
+    } catch (error) {
+      console.error('Erro ao salvar teste:', error);
+      toast.error('Erro ao salvar teste físico');
+    }
   };
 
-  const testesFiltrados = testesFisicosMock.filter(teste => {
-    const matchAluno = filtroAluno === 'todos' || teste.alunoId === filtroAluno;
+  const testesFiltrados = testes.filter((teste: TesteFisicoType) => {
+    if (filtroAluno === 'todos') {
+      const matchTipo = filtroTipo === 'todos' || teste.tipoTeste === filtroTipo;
+      return matchTipo;
+    }
+    
+    // Find the athlete by user.id and compare with teste.alunoId (athleteId)
+    const alunoSelecionado = alunos.find(a => a.id === filtroAluno);
+    const matchAluno = alunoSelecionado?.athleteId === teste.alunoId;
     const matchTipo = filtroTipo === 'todos' || teste.tipoTeste === filtroTipo;
     return matchAluno && matchTipo;
   });
@@ -235,7 +291,7 @@ export function TesteFisico() {
 
   // Calcular estatísticas
   const totalTestes = testesFiltrados.length;
-  const alunosTestados = new Set(testesFiltrados.map(t => t.alunoId)).size;
+  const alunosTestados = new Set(testesFiltrados.map((t: TesteFisicoType) => t.alunoId)).size;
 
   return (
     <div className="space-y-6">
@@ -262,6 +318,23 @@ export function TesteFisico() {
 
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {loading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-20 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-6 w-12 bg-gray-200 rounded animate-pulse"></div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <>
+        
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -303,6 +376,8 @@ export function TesteFisico() {
             </div>
           </CardContent>
         </Card>
+        </>
+        )}
       </div>
 
       {/* Filtros */}
@@ -320,7 +395,7 @@ export function TesteFisico() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os Alunos</SelectItem>
-                  {alunosMock.filter(a => a.status === 'Ativo').map(aluno => (
+                  {alunos.filter((a: Aluno) => a.status === 'Ativo').map((aluno: Aluno) => (
                     <SelectItem key={aluno.id} value={aluno.id}>
                       {aluno.nome}
                     </SelectItem>
@@ -382,8 +457,8 @@ export function TesteFisico() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  testesFiltrados.map(teste => {
-                    const aluno = alunosMock.find(a => a.id === teste.alunoId);
+                  testesFiltrados.map((teste: TesteFisicoType) => {
+                    const aluno = alunos.find((a: Aluno) => a.athleteId === teste.alunoId);
                     if (!aluno) return null;
 
                     return (
@@ -459,7 +534,7 @@ export function TesteFisico() {
                   <SelectValue placeholder="Selecione o aluno" />
                 </SelectTrigger>
                 <SelectContent>
-                  {alunosMock.filter(a => a.status === 'Ativo').map(aluno => (
+                  {alunos.filter((a: Aluno) => a.status === 'Ativo').map((aluno: Aluno) => (
                     <SelectItem key={aluno.id} value={aluno.id}>
                       <div className="flex items-center gap-2">
                         {aluno.nome} - {aluno.nivel}
@@ -570,7 +645,7 @@ export function TesteFisico() {
       </Dialog>
 
       {/* Sheet Perfil do Aluno */}
-      <Sheet open={!!alunoPerfilAberto} onOpenChange={(open) => !open && setAlunoPerfilAberto(null)}>
+      <Sheet open={!!alunoPerfilAberto} onOpenChange={(open: boolean) => !open && setAlunoPerfilAberto(null)}>
         <SheetContent className="w-full sm:max-w-md p-4">
           <SheetHeader>
             <SheetTitle>Informações do Aluno</SheetTitle>
@@ -580,10 +655,10 @@ export function TesteFisico() {
           </SheetHeader>
 
           {alunoPerfilAberto && (() => {
-            const aluno = alunosMock.find(a => a.id === alunoPerfilAberto);
+            const aluno = alunos.find((a: Aluno) => a.id === alunoPerfilAberto);
             if (!aluno) return null;
 
-            const testesDoAluno = testesFisicosMock.filter(t => t.alunoId === aluno.id);
+            const testesDoAluno = testes.filter((t: TesteFisicoType) => t.alunoId === aluno.athleteId);
 
             return (
               <div className="space-y-4 mt-6">
@@ -644,7 +719,7 @@ export function TesteFisico() {
                   <CardContent>
                     {testesDoAluno.length > 0 ? (
                       <div className="space-y-3">
-                        {testesDoAluno.map(teste => (
+                        {testesDoAluno.map((teste: TesteFisicoType) => (
                           <div key={teste.id} className="p-3 border rounded-lg">
                             <div className="flex items-center justify-between mb-2">
                               <Badge className={getTipoBadgeColor(teste.tipoTeste)}>

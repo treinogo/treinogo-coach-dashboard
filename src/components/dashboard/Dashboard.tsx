@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Users, FileText, Trophy, TrendingUp, Activity, Calendar, ArrowRight, 
   Info, Sparkles, Settings2, RefreshCw, X, Filter, Lightbulb, Zap, Flag, MapPin, Clock 
@@ -8,7 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Button } from '../ui/button';
 import { Progress } from '../ui/progress';
 import { Badge } from '../ui/badge';
-import { alunosMock, planosMock, desafiosMock, atividadesRecentesMock, dicasDoDia, provasMock, treinosRealizadosPorMes } from '../../lib/mockData';
+import { Skeleton } from '../ui/skeleton';
+import { dicasDoDia } from '../../lib/mockData';
+import { DashboardService } from '../../lib/services';
 import { Alert, AlertDescription } from '../ui/alert';
 import {
   Tooltip,
@@ -30,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface DashboardProps {
@@ -59,12 +61,49 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const [filtroAtividade, setFiltroAtividade] = useState<'todos' | 'plano' | 'desafio' | 'aluno'>('todos');
   const [showInsight, setShowInsight] = useState(false);
   const [mesSelecionadoProvas, setMesSelecionadoProvas] = useState(new Date().getMonth() + 1);
+  
+  // Real data from API
+  const [dashboardMetrics, setDashboardMetrics] = useState<any>(null);
+  const [treinosStats, setTreinosStats] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const alunosAtivos = alunosMock.filter(a => a.status === 'Ativo').length;
-  const planosAtivos = planosMock.filter(p => p.status === 'Ativo').length;
-  const desafiosAtivos = desafiosMock.filter(d => d.status === 'Ativo').length;
-  const taxaConclusao = 87; // Cálculo mock
-  const mediaProfessores = 75; // Média mock
+  // Load dashboard data
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        setLoading(true);
+        const [metricsResponse, trainingStatsResponse] = await Promise.all([
+          DashboardService.getMetrics(),
+          DashboardService.getTrainingStats()
+        ]);
+        
+        setDashboardMetrics(metricsResponse.metrics);
+        setTreinosStats(trainingStatsResponse.treinosRealizadosPorMes || []);
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        // Keep empty data on error, no fallbacks
+        setDashboardMetrics({
+          alunosAtivos: 0,
+          planosAtivos: 0,
+          desafiosAtivos: 0,
+          taxaConclusao: 0,
+          atividadesRecentes: []
+        });
+        setTreinosStats([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, []);
+
+  // Use real data or fallback values
+  const alunosAtivos = dashboardMetrics?.alunosAtivos || 0;
+  const planosAtivos = dashboardMetrics?.planosAtivos || 0;
+  const desafiosAtivos = dashboardMetrics?.desafiosAtivos || 0;
+  const taxaConclusao = dashboardMetrics?.taxaConclusao || 87;
+  const mediaProfessores = 75; // Keep mock for now
 
   const metricas = [
     { 
@@ -148,17 +187,14 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     }, 2000);
   };
 
+  const atividadesRecentes = dashboardMetrics?.atividadesRecentes || [];
   const atividadesFiltradas = filtroAtividade === 'todos' 
-    ? atividadesRecentesMock 
-    : atividadesRecentesMock.filter(a => a.tipo === filtroAtividade);
+    ? atividadesRecentes 
+    : atividadesRecentes.filter(a => a.tipo === filtroAtividade);
 
-  // Filtrar provas por mês
-  const provasFiltradas = provasMock.filter(prova => 
-    prova.mes === mesSelecionadoProvas && prova.ano === 2024
-  );
-
-  // Desafios ativos com detalhes
-  const desafiosAtivosDetalhes = desafiosMock.filter(d => d.status === 'Ativo');
+  // TODO: Integrate with real data from API
+  const provasFiltradas: any[] = [];
+  const desafiosAtivosDetalhes: any[] = [];
 
   const formatarData = (data: Date) => {
     return new Intl.DateTimeFormat('pt-BR', {
@@ -195,6 +231,57 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     }
     return null;
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        {/* Loading Métricas */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <Card key={idx}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <Skeleton className="h-4 w-24 mb-2" />
+                    <Skeleton className="h-8 w-16" />
+                  </div>
+                  <Skeleton className="w-12 h-12 rounded-lg" />
+                </div>
+                <Skeleton className="h-4 w-32 mt-2" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        
+        {/* Loading Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-64 w-full" />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, idx) => (
+                  <div key={idx} className="flex items-center gap-3">
+                    <Skeleton className="w-8 h-8 rounded" />
+                    <Skeleton className="h-4 flex-1" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -371,7 +458,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         <CardContent>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={treinosRealizadosPorMes}>
+              <BarChart data={treinosStats}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="mes" 
@@ -384,7 +471,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                 />
                 <RechartsTooltip content={<CustomTooltip />} />
                 <Bar dataKey="treinos" radius={[8, 8, 0, 0]}>
-                  {treinosRealizadosPorMes.map((entry, index) => (
+                  {treinosStats.map((entry: any, index: number) => (
                     <Cell 
                       key={`cell-${index}`} 
                       fill={entry.treinos === 0 ? '#e5e7eb' : entry.treinos < 150 ? '#f97316' : entry.treinos < 180 ? '#3b82f6' : '#10b981'} 
@@ -430,7 +517,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             <div className="mt-4">
               <Select 
                 value={mesSelecionadoProvas.toString()} 
-                onValueChange={(value) => setMesSelecionadoProvas(Number(value))}
+                onValueChange={(value: string) => setMesSelecionadoProvas(Number(value))}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />

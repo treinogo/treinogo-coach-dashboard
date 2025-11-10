@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FileText, Plus, Eye, Edit, Trash2, UserPlus, Filter, Search, Mail, Copy } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -40,8 +40,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from '../ui/sheet';
-import { planosMock, alunosMock } from '../../lib/mockData';
-import { toast } from 'sonner@2.0.3';
+import { PlanosService, AlunosService } from '../../lib/services';
+import { PlanoTreino, Aluno } from '../../types';
+import { toast } from 'sonner';
 
 interface PlanosListProps {
   onNavigate: (page: string) => void;
@@ -53,6 +54,11 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [planoParaDeletar, setPlanoParaDeletar] = useState<string | null>(null);
   
+  // Estados para dados da API
+  const [planos, setPlanos] = useState<PlanoTreino[]>([]);
+  const [alunos, setAlunos] = useState<Aluno[]>([]);
+  const [loading, setLoading] = useState(true);
+  
   // Estados para o Sheet de aplicar aos alunos
   const [sheetAberto, setSheetAberto] = useState(false);
   const [planoParaAplicar, setPlanoParaAplicar] = useState<string | null>(null);
@@ -63,7 +69,29 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
   // Estados para visualização
   const [planoParaVisualizar, setPlanoParaVisualizar] = useState<string | null>(null);
 
-  const planosFiltrados = planosMock.filter((plano) => {
+  // Carrega dados iniciais
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [planosData, alunosData] = await Promise.all([
+          PlanosService.getPlans(),
+          AlunosService.getAthletes()
+        ]);
+        setPlanos(planosData);
+        setAlunos(alunosData);
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+        toast.error('Erro ao carregar dados');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
+
+  const planosFiltrados = planos.filter((plano: PlanoTreino) => {
     const matchBusca = plano.nome.toLowerCase().includes(busca.toLowerCase());
     const matchCategoria = filtroCategoria === 'todas' || plano.categoria === filtroCategoria;
     const matchStatus = filtroStatus === 'todos' || plano.status === filtroStatus;
@@ -74,11 +102,18 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
     setPlanoParaDeletar(id);
   };
 
-  const confirmarDelecao = () => {
+  const confirmarDelecao = async () => {
     if (planoParaDeletar) {
-      toast.success('Plano excluído com sucesso', {
-        description: 'O plano foi removido do sistema.',
-      });
+      try {
+        await PlanosService.deletePlan(planoParaDeletar);
+        setPlanos(prev => prev.filter(p => p.id !== planoParaDeletar));
+        toast.success('Plano excluído com sucesso', {
+          description: 'O plano foi removido do sistema.',
+        });
+      } catch (error) {
+        console.error('Erro ao deletar plano:', error);
+        toast.error('Erro ao excluir plano');
+      }
       setPlanoParaDeletar(null);
     }
   };
@@ -112,34 +147,39 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
     );
   };
 
-  const handleAplicarPlano = () => {
+  const handleAplicarPlano = async () => {
     if (alunosSelecionados.length === 0) {
       toast.error('Selecione pelo menos um aluno');
       return;
     }
 
-    const plano = planosMock.find(p => p.id === planoParaAplicar);
-    const nomeAlunos = alunosSelecionados
-      .map(id => alunosMock.find(a => a.id === id)?.nome)
-      .filter(Boolean)
-      .join(', ');
+    try {
+      if (planoParaAplicar) {
+        await PlanosService.assignPlanToAthletes(planoParaAplicar, alunosSelecionados);
+        
+        const plano = planos.find(p => p.id === planoParaAplicar);
+        
+        toast.success('Plano aplicado com sucesso', {
+          description: `${plano?.nome} foi aplicado para ${alunosSelecionados.length} aluno(s)${enviarEmail ? ' com notificação por e-mail' : ''}.`,
+        });
 
-    toast.success('Plano aplicado com sucesso', {
-      description: `${plano?.nome} foi aplicado para ${alunosSelecionados.length} aluno(s)${enviarEmail ? ' com notificação por e-mail' : ''}.`,
-    });
-
-    setSheetAberto(false);
-    setAlunosSelecionados([]);
-    setPlanoParaAplicar(null);
+        setSheetAberto(false);
+        setAlunosSelecionados([]);
+        setPlanoParaAplicar(null);
+      }
+    } catch (error) {
+      console.error('Erro ao aplicar plano:', error);
+      toast.error('Erro ao aplicar plano');
+    }
   };
 
-  const alunosFiltrados = alunosMock.filter(aluno =>
+  const alunosFiltrados = alunos.filter((aluno: Aluno) =>
     aluno.nome.toLowerCase().includes(buscaAluno.toLowerCase()) ||
     aluno.email.toLowerCase().includes(buscaAluno.toLowerCase())
   );
 
   const handleClonarPlano = (planoId: string) => {
-    const plano = planosMock.find(p => p.id === planoId);
+    const plano = planos.find(p => p.id === planoId);
     if (plano) {
       toast.success('Plano clonado com sucesso', {
         description: `Uma cópia de "${plano.nome}" foi criada com o nome "${plano.nome} - Cópia".`,
@@ -228,7 +268,21 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
 
       {/* Lista de Planos */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {planosFiltrados.map((plano) => (
+        {loading ? (
+          // Skeleton loading
+          Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="h-48">
+              <CardHeader>
+                <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-3 bg-gray-200 rounded animate-pulse mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2"></div>
+              </CardContent>
+            </Card>
+          ))
+        ) : planosFiltrados.map((plano: PlanoTreino) => (
           <Card key={plano.id} className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <div className="flex items-start justify-between">
@@ -328,7 +382,7 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
         ))}
       </div>
 
-      {planosFiltrados.length === 0 && (
+      {!loading && planosFiltrados.length === 0 && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <FileText className="w-12 h-12 text-gray-300 mb-4" />
@@ -404,7 +458,7 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
             {/* Lista de Alunos */}
             <ScrollArea className="h-[400px] pr-4">
               <div className="space-y-2">
-                {alunosFiltrados.map((aluno) => (
+                {alunosFiltrados.map((aluno: Aluno) => (
                   <div
                     key={aluno.id}
                     className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-gray-50 transition-colors cursor-pointer"
@@ -414,7 +468,7 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
                       id={`aluno-${aluno.id}`}
                       checked={alunosSelecionados.includes(aluno.id)}
                       onCheckedChange={() => handleToggleAluno(aluno.id)}
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
                     />
                     <Avatar className="w-10 h-10">
                       <AvatarImage src={aluno.foto} alt={aluno.nome} />
@@ -450,7 +504,7 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
               <Checkbox
                 id="enviar-email"
                 checked={enviarEmail}
-                onCheckedChange={(checked) => setEnviarEmail(checked as boolean)}
+                onCheckedChange={(checked: boolean) => setEnviarEmail(checked)}
               />
               <div className="flex-1">
                 <Label

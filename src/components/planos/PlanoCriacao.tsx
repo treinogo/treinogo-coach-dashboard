@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PlusCircle, Save, Eye, Play, Zap, Wind, Mountain, Target, X, Plus, Users, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -36,15 +36,21 @@ import {
 } from '../ui/popover';
 import { Badge } from '../ui/badge';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
-import { toast } from 'sonner@2.0.3';
-import { TipoTreino, TreinoDetalhe, TipoMedida, ZonaTreino } from '../../types';
-import { provasMock, alunosMock } from '../../lib/mockData';
+import { toast } from 'sonner';
+import { TipoTreino, TreinoDetalhe, TipoMedida, ZonaTreino, Aluno } from '../../types';
+
+import { PlanosService, AlunosService, ProvasService } from '../../lib/services';
 
 interface PlanoCriacaoProps {
   onVoltar?: () => void;
 }
 
 export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
+  // Dados reais do backend  
+  const [alunos, setAlunos] = useState<Aluno[]>([]);
+  const [provas, setProvas] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [nomePlano, setNomePlano] = useState('');
   const [categoria, setCategoria] = useState('');
   const [duracao, setDuracao] = useState('4');
@@ -79,6 +85,29 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
   const [popoverAberto, setPopoverAberto] = useState(false);
 
   const diasSemana = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM'];
+
+  // Carrega dados iniciais
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [alunosData, provasData] = await Promise.all([
+          AlunosService.getAthletes(),
+          ProvasService.getRaces()
+        ]);
+        setAlunos(alunosData);
+        setProvas(provasData);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        setAlunos([]);
+        setProvas([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
 
   const tiposTreino: { tipo: TipoTreino; icon: any; cor: string; descricao: string }[] = [
     {
@@ -192,7 +221,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
     );
   };
 
-  const handleSalvar = () => {
+  const handleSalvar = async () => {
     if (!nomePlano || !categoria) {
       toast.error('Erro ao salvar', {
         description: 'Preencha os campos obrigatórios: Nome e Categoria',
@@ -200,16 +229,76 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
       return;
     }
 
-    let mensagemAlunos = '';
-    if (aplicarTodosAlunos) {
-      mensagemAlunos = ` e aplicado a todos os ${alunosMock.length} alunos`;
-    } else if (alunosSelecionados.length > 0) {
-      mensagemAlunos = ` e aplicado a ${alunosSelecionados.length} aluno(s)`;
-    }
+    try {
+      setLoading(true);
 
-    toast.success('✅ Plano salvo com sucesso', {
-      description: `O plano "${nomePlano}" foi criado${mensagemAlunos}.`,
-    });
+      // Mapear categoria para o backend
+      const categoryMap: Record<string, string> = {
+        'Iniciante': 'BEGINNER',
+        'Intermediário': 'INTERMEDIATE', 
+        'Avançado': 'ADVANCED',
+        '5K': 'FIVE_K',
+        '10K': 'TEN_K',
+        'Meia Maratona': 'HALF_MARATHON',
+        'Maratona': 'MARATHON'
+      };
+
+      // Criar plano
+      const planData = {
+        name: nomePlano,
+        category: categoryMap[categoria] || categoria,
+        duration: parseInt(duracao),
+        daysPerWeek: parseInt(diasPorSemana)
+      };
+
+      const response = await PlanosService.createPlan(planData);
+      const planId = response.plan.id;
+
+      // Atribuir aos alunos se selecionado
+      if (aplicarTodosAlunos || alunosSelecionados.length > 0) {
+        const alunosData = alunos;
+        const alunosParaAtribuir = aplicarTodosAlunos 
+          ? alunosData.filter(a => a.status === 'Ativo').map(a => a.athleteId || a.id)
+          : alunosSelecionados;
+
+        if (alunosParaAtribuir.length > 0) {
+          await PlanosService.assignPlanToAthletes(planId, alunosParaAtribuir);
+        }
+      }
+
+      let mensagemAlunos = '';
+      if (aplicarTodosAlunos) {
+        const alunosAtivos = alunos.filter(a => a.status === 'Ativo').length;
+        mensagemAlunos = ` e aplicado a todos os ${alunosAtivos} alunos ativos`;
+      } else if (alunosSelecionados.length > 0) {
+        mensagemAlunos = ` e aplicado a ${alunosSelecionados.length} aluno(s)`;
+      }
+
+      toast.success('✅ Plano salvo com sucesso', {
+        description: `O plano "${nomePlano}" foi criado${mensagemAlunos}.`,
+      });
+
+      // Limpar formulário
+      setNomePlano('');
+      setCategoria('');
+      setDuracao('4');
+      setDiasPorSemana('4');
+      setProgramacao({});
+      setAlunosSelecionados([]);
+      setAplicarTodosAlunos(false);
+      
+      // Voltar se callback fornecido
+      if (onVoltar) {
+        setTimeout(() => onVoltar(), 1500);
+      }
+    } catch (error) {
+      console.error('Error creating plan:', error);
+      toast.error('Erro ao salvar plano', {
+        description: 'Tente novamente.',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getTreinoConfig = (tipo: TipoTreino | null) => {
@@ -376,7 +465,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
                     </div>
                     <ScrollArea className="h-[300px]">
                       <div className="p-4 space-y-2">
-                        {alunosMock.map((aluno) => (
+                        {alunos.map((aluno) => (
                           <div
                             key={aluno.id}
                             className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
@@ -386,7 +475,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
                               id={`aluno-criar-${aluno.id}`}
                               checked={alunosSelecionados.includes(aluno.id)}
                               onCheckedChange={() => handleToggleAluno(aluno.id)}
-                              onClick={(e) => e.stopPropagation()}
+                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
                             />
                             <Avatar className="w-8 h-8">
                               <AvatarImage src={aluno.foto} alt={aluno.nome} />
@@ -427,7 +516,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
                   <Checkbox
                     id="todos-alunos"
                     checked={aplicarTodosAlunos}
-                    onCheckedChange={(checked) => {
+                    onCheckedChange={(checked: boolean) => {
                       setAplicarTodosAlunos(checked as boolean);
                       if (checked) {
                         setAlunosSelecionados([]);
@@ -438,7 +527,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
                     htmlFor="todos-alunos"
                     className="text-sm cursor-pointer flex-1"
                   >
-                    Aplicar a todos os alunos ({alunosMock.length})
+                    Aplicar a todos os alunos ({alunos.length})
                   </Label>
                 </div>
               </div>
@@ -450,7 +539,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
                 <Label className="text-xs text-gray-600">Alunos Selecionados:</Label>
                 <div className="flex flex-wrap gap-2">
                   {alunosSelecionados.map((alunoId) => {
-                    const aluno = alunosMock.find(a => a.id === alunoId);
+                    const aluno = alunos.find(a => a.id === alunoId);
                     if (!aluno) return null;
                     return (
                       <Badge key={alunoId} variant="secondary" className="flex items-center gap-1">
@@ -529,7 +618,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
                                           <p className="text-xs">Tipo: {treinoNoDia.tipoProvaTeste}</p>
                                           {treinoNoDia.tipoProvaTeste === 'Prova' && treinoNoDia.provaId && (
                                             <p className="text-xs">
-                                              Prova: {provasMock.find(p => p.id === treinoNoDia.provaId)?.nome}
+                                              Prova: {provas.find(p => p.id === treinoNoDia.provaId)?.nome}
                                             </p>
                                           )}
                                           {treinoNoDia.tipoProvaTeste === 'Teste' && treinoNoDia.tipoTeste && (
@@ -745,7 +834,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
                         <SelectValue placeholder="Escolha uma prova cadastrada" />
                       </SelectTrigger>
                       <SelectContent>
-                        {provasMock.map((prova) => (
+                        {provas.map((prova) => (
                           <SelectItem key={prova.id} value={prova.id}>
                             {prova.nome} - {prova.distancias.join(', ')}
                           </SelectItem>

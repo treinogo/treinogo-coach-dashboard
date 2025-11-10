@@ -1,4 +1,4 @@
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, LogOut, User } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -9,6 +9,7 @@ import {
 } from '../ui/popover';
 import { notificacoesMock } from '../../lib/mockData';
 import { ScrollArea } from '../ui/scroll-area';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface HeaderProps {
   title: string;
@@ -16,6 +17,7 @@ interface HeaderProps {
 }
 
 export function Header({ title, subtitle }: HeaderProps) {
+  const { user, logout } = useAuth();
   const notificacoesNaoLidas = notificacoesMock.filter(n => !n.lida).length;
 
   const getIconeNotificacao = (tipo: string) => {
@@ -99,6 +101,32 @@ export function Header({ title, subtitle }: HeaderProps) {
                     ))}
                   </div>
                 </ScrollArea>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* User Menu */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon" aria-label="Menu do usuário">
+                <User className="w-5 h-5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-48" align="end">
+              <div className="space-y-2">
+                <div className="px-2 py-1 border-b">
+                  <p className="text-sm font-medium text-gray-900">{user?.name}</p>
+                  <p className="text-xs text-gray-500">{user?.email}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={logout}
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sair
+                </Button>
               </div>
             </PopoverContent>
           </Popover>

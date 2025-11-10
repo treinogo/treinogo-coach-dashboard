@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Toaster } from './components/ui/sonner';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { LoadingSpinner } from './components/ui/LoadingSpinner';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { Dashboard } from './components/dashboard/Dashboard';
@@ -16,8 +18,21 @@ import { MeusDados } from './components/settings/MeusDados';
 
 type Page = 'dashboard' | 'planos' | 'criar-plano' | 'desafios' | 'testes' | 'provas' | 'alunos' | 'assinaturas' | 'convidar-amigo' | 'configuracoes' | 'meus-dados';
 
-export default function App() {
+function AppContent() {
+  const { isLoading, isAuthenticated } = useAuth();
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!isAuthenticated) {
+    return <LoadingSpinner />;
+  }
+
+  const handleNavigate = (page: string) => {
+    setCurrentPage(page as Page);
+  };
 
   const getPageTitle = () => {
     switch (currentPage) {
@@ -80,9 +95,9 @@ export default function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <Dashboard onNavigate={setCurrentPage} />;
+        return <Dashboard onNavigate={handleNavigate} />;
       case 'planos':
-        return <PlanosList onNavigate={setCurrentPage} />;
+        return <PlanosList onNavigate={handleNavigate} />;
       case 'criar-plano':
         return <PlanoCriacao onVoltar={() => setCurrentPage('planos')} />;
       case 'desafios':
@@ -102,13 +117,13 @@ export default function App() {
       case 'configuracoes':
         return <Configuracoes />;
       default:
-        return <Dashboard onNavigate={setCurrentPage} />;
+        return <Dashboard onNavigate={handleNavigate} />;
     }
   };
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
+      <Sidebar currentPage={currentPage} onNavigate={handleNavigate} />
       
       <main className="flex-1 overflow-auto">
         <Header title={getPageTitle()} subtitle={getPageSubtitle()} />
@@ -124,5 +139,13 @@ export default function App() {
         closeButton
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

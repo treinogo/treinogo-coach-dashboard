@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Trophy, Plus, Calendar, Users, Award, TrendingUp, Target, Clock, UserCheck, UserPlus, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -38,10 +38,17 @@ import {
 } from '../ui/select';
 import { ScrollArea } from '../ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
-import { desafiosMock, alunosMock } from '../../lib/mockData';
-import { toast } from 'sonner@2.0.3';
+// Mock data removed - using real API data only
+import { DesafiosService, AlunosService } from '../../lib/services';
+import { Desafio, Aluno } from '../../types';
+import { toast } from 'sonner';
 
 export function Desafios() {
+  // Dados reais do backend
+  const [desafios, setDesafios] = useState<Desafio[]>([]);
+  const [alunos, setAlunos] = useState<Aluno[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [showNovoDesafio, setShowNovoDesafio] = useState(false);
   const [nomeDesafio, setNomeDesafio] = useState('');
   const [objetivo, setObjetivo] = useState('');
@@ -57,7 +64,32 @@ export function Desafios() {
   const [popoverAdicionarAberto, setPopoverAdicionarAberto] = useState<string | null>(null);
   const [buscaAluno, setBuscaAluno] = useState('');
 
-  const handleCriarDesafio = () => {
+  // Carrega dados iniciais
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [desafiosData, alunosData] = await Promise.all([
+          DesafiosService.getChallenges(),
+          AlunosService.getAthletes()
+        ]);
+        setDesafios(desafiosData);
+        setAlunos(alunosData);
+            } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+        toast.error('Erro ao carregar dados');
+        // Keep empty arrays on error, no fallbacks
+        setDesafios([]);
+        setAlunos([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
+
+  const handleCriarDesafio = async () => {
     if (!nomeDesafio || !objetivo) {
       toast.error('Erro ao criar desafio', {
         description: 'Preencha os campos obrigatórios: Nome e Objetivo',
@@ -72,20 +104,55 @@ export function Desafios() {
       return;
     }
 
-    const numParticipantes = tipoParticipacao === 'todos' 
-      ? alunosMock.filter(a => a.status === 'Ativo').length 
-      : alunosSelecionados.length;
+    try {
+      setLoading(true);
+      
+      // Determinar participantes
+      const alunosAtivos = alunos.filter(a => a.status === 'Ativo');
+      const participantes = tipoParticipacao === 'todos' 
+        ? alunosAtivos.map(a => a.athleteId || a.id) 
+        : alunosSelecionados.map(userId => {
+            const aluno = alunosAtivos.find(a => a.id === userId);
+            return aluno?.athleteId || aluno?.id || userId;
+          });
 
-    toast.success('✅ Desafio criado com sucesso', {
-      description: `O desafio "${nomeDesafio}" foi criado com ${numParticipantes} participante(s).`,
-    });
-    setShowNovoDesafio(false);
-    setNomeDesafio('');
-    setObjetivo('');
-    setDuracao('30');
-    setRecompensa('');
-    setTipoParticipacao('todos');
-    setAlunosSelecionados([]);
+      const agora = new Date();
+      const dataFim = new Date();
+      dataFim.setDate(agora.getDate() + parseInt(duracao));
+
+      await DesafiosService.createChallenge({
+        nome: nomeDesafio,
+        objetivo,
+        duracao: parseInt(duracao),
+        dataInicio: agora,
+        dataFim,
+        recompensa: recompensa || undefined,
+        participantes
+      });
+
+      // Recarregar desafios
+      const desafiosData = await DesafiosService.getChallenges();
+      setDesafios(desafiosData);
+
+      toast.success('✅ Desafio criado com sucesso', {
+        description: `O desafio "${nomeDesafio}" foi criado com ${participantes.length} participante(s).`,
+      });
+
+      setShowNovoDesafio(false);
+      setNomeDesafio('');
+      setObjetivo('');
+      setDuracao('30');
+      setRecompensa('');
+      setTipoParticipacao('todos');
+      setAlunosSelecionados([]);
+    } catch (error) {
+      console.error('Error creating challenge:', error);
+      toast.error('Erro ao criar desafio', {
+        description: 'Tente novamente.',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleToggleAluno = (alunoId: string) => {
@@ -116,21 +183,35 @@ export function Desafios() {
     return dias > 0 ? dias : 0;
   };
 
-  const handleAdicionarParticipante = (desafioId: string, alunoId: string) => {
-    const aluno = alunosMock.find(a => a.id === alunoId);
-    toast.success('Participante adicionado', {
-      description: `${aluno?.nome} foi adicionado ao desafio com sucesso.`,
-    });
-    setPopoverAdicionarAberto(null);
-    setBuscaAluno('');
+  const handleAdicionarParticipante = async (desafioId: string, alunoId: string) => {
+    try {
+      const aluno = alunos.find(a => a.id === alunoId);
+      const athleteId = aluno?.athleteId || aluno?.id || alunoId;
+      
+      await DesafiosService.addParticipant(desafioId, athleteId);
+      
+      // Recarregar desafios
+      const desafiosData = await DesafiosService.getChallenges();
+      setDesafios(desafiosData);
+      toast.success('Participante adicionado', {
+        description: `${aluno?.nome} foi adicionado ao desafio com sucesso.`,
+      });
+      setPopoverAdicionarAberto(null);
+      setBuscaAluno('');
+    } catch (error) {
+      console.error('Error adding participant:', error);
+      toast.error('Erro ao adicionar participante', {
+        description: 'Tente novamente.',
+      });
+    }
   };
 
   const getAlunosDisponiveis = (desafioId: string) => {
-    const desafio = desafiosMock.find(d => d.id === desafioId);
+    const desafio = desafios.find(d => d.id === desafioId);
     if (!desafio) return [];
     
     // Filtrar alunos que já não estão no desafio
-    const alunosDisponiveis = alunosMock.filter(
+    const alunosDisponiveis = alunos.filter(
       aluno => !desafio.participantes.includes(aluno.id) && aluno.status === 'Ativo'
     );
     
@@ -171,7 +252,7 @@ export function Desafios() {
       <div>
         <h2 className="text-lg text-gray-900 mb-4">Desafios Ativos</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {desafiosMock
+          {desafios
             .filter((d) => d.status === 'Ativo')
             .map((desafio) => {
               const diasRestantes = calcularDiasRestantes(desafio.dataFim);
@@ -230,7 +311,7 @@ export function Desafios() {
                       </p>
                       <div className="space-y-2">
                         {desafio.ranking.slice(0, 3).map((item, index) => {
-                          const aluno = alunosMock.find((a) => a.id === item.alunoId);
+                          const aluno = alunos.find((a) => a.id === item.alunoId);
                           if (!aluno) return null;
 
                           const medalhas = ['🥇', '🥈', '🥉'];
@@ -267,7 +348,7 @@ export function Desafios() {
                       </Button>
                       <Popover 
                         open={popoverAdicionarAberto === desafio.id} 
-                        onOpenChange={(open) => {
+                        onOpenChange={(open: boolean) => {
                           setPopoverAdicionarAberto(open ? desafio.id : null);
                           if (!open) setBuscaAluno('');
                         }}
@@ -350,11 +431,11 @@ export function Desafios() {
       </div>
 
       {/* Desafios Concluídos */}
-      {desafiosMock.filter((d) => d.status === 'Concluído').length > 0 && (
+      {desafios.filter((d) => d.status === 'Concluído').length > 0 && (
         <div>
           <h2 className="text-lg text-gray-900 mb-4">Desafios Concluídos</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {desafiosMock
+            {desafios
               .filter((d) => d.status === 'Concluído')
               .map((desafio) => (
                 <Card key={desafio.id} className="opacity-75">
@@ -380,7 +461,7 @@ export function Desafios() {
                           <p className="text-xs text-yellow-600 mb-2">🏆 Vencedor</p>
                           <div className="flex items-center gap-2">
                             {(() => {
-                              const vencedor = alunosMock.find((a) => a.id === desafio.ranking[0].alunoId);
+                              const vencedor = alunos.find((a) => a.id === desafio.ranking[0].alunoId);
                               return vencedor ? (
                                 <>
                                   <Avatar className="w-8 h-8">
@@ -421,7 +502,7 @@ export function Desafios() {
       </Card>
 
       {/* Sheet Ranking Completo */}
-      <Sheet open={!!desafioRankingAberto} onOpenChange={(open) => !open && setDesafioRankingAberto(null)}>
+      <Sheet open={!!desafioRankingAberto} onOpenChange={(open: boolean) => !open && setDesafioRankingAberto(null)}>
         <SheetContent className="w-full sm:max-w-md">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
@@ -429,15 +510,15 @@ export function Desafios() {
               Ranking Completo
             </SheetTitle>
             <SheetDescription>
-              {desafioRankingAberto && desafiosMock.find(d => d.id === desafioRankingAberto)?.nome}
+              {desafioRankingAberto && desafios.find(d => d.id === desafioRankingAberto)?.nome}
             </SheetDescription>
           </SheetHeader>
 
           <ScrollArea className="h-[calc(100vh-120px)] mt-6">
             <div className="space-y-2 pr-4">
               {desafioRankingAberto && 
-                desafiosMock.find(d => d.id === desafioRankingAberto)?.ranking.map((item, index) => {
-                  const aluno = alunosMock.find(a => a.id === item.alunoId);
+                desafios.find(d => d.id === desafioRankingAberto)?.ranking.map((item, index) => {
+                  const aluno = alunos.find(a => a.id === item.alunoId);
                   if (!aluno) return null;
 
                   const isPodio = index < 3;
@@ -481,9 +562,7 @@ export function Desafios() {
                         >
                           {item.pontos} pts
                         </Badge>
-                        {item.distancia && (
-                          <p className="text-xs text-gray-500 mt-1">{item.distancia} km</p>
-                        )}
+                        <p className="text-xs text-gray-500 mt-1">{item.pontos} pontos</p>
                       </div>
                     </div>
                   );
@@ -563,7 +642,7 @@ export function Desafios() {
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="todos" id="todos" />
                   <Label htmlFor="todos" className="cursor-pointer">
-                    Todos os alunos ativos ({alunosMock.filter(a => a.status === 'Ativo').length} alunos)
+                    Todos os alunos ativos ({alunos.filter(a => a.status === 'Ativo').length} alunos)
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -580,7 +659,7 @@ export function Desafios() {
                     <UserCheck className="w-4 h-4" />
                     Selecione os alunos que participarão do desafio:
                   </p>
-                  {alunosMock.filter(a => a.status === 'Ativo').map(aluno => (
+                  {alunos.filter(a => a.status === 'Ativo').map(aluno => (
                     <div key={aluno.id} className="flex items-center space-x-3 p-2 rounded hover:bg-gray-50">
                       <Checkbox 
                         id={`aluno-${aluno.id}`}
@@ -602,6 +681,19 @@ export function Desafios() {
                       </Label>
                     </div>
                   ))}
+                  
+                  {loading && (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-gray-500">Carregando alunos...</p>
+                    </div>
+                  )}
+                  
+                  {!loading && alunos.filter(a => a.status === 'Ativo').length === 0 && (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-gray-500">Nenhum aluno ativo encontrado</p>
+                    </div>
+                  )}
+                  
                   {alunosSelecionados.length > 0 && (
                     <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded">
                       <p className="text-xs text-blue-900">

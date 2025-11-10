@@ -8,7 +8,8 @@ export interface Professor {
 }
 
 export interface Aluno {
-  id: string;
+  id: string; // User ID for UI display
+  athleteId?: string; // Athlete Profile ID for API operations
   nome: string;
   email: string;
   telefone?: string;

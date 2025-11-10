@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Flag, Plus, MapPin, Calendar, Filter, Users, Award } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -22,8 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { provasMock } from '../../lib/mockData';
-import { toast } from 'sonner@2.0.3';
+import { ProvasService } from '../../lib/services';
+import { toast } from 'sonner';
 
 const MESES = [
   { numero: 1, nome: 'Janeiro', abrev: 'JAN' },
@@ -49,6 +49,7 @@ const ESTADOS_BRASILEIROS = [
 const DISTANCIAS_DISPONIVEIS = ['3km', '5km', '10km', '15km', '21km', '42km'];
 
 export function Provas() {
+  // UI States  
   const [showNovaProva, setShowNovaProva] = useState(false);
   const [nomeProva, setNomeProva] = useState('');
   const [distanciasSelecionadas, setDistanciasSelecionadas] = useState<string[]>([]);
@@ -60,6 +61,29 @@ export function Provas() {
   const [linkProva, setLinkProva] = useState('');
   const [anoFiltro, setAnoFiltro] = useState('2024');
   const [mesSelecionado, setMesSelecionado] = useState('11');
+  
+  // API States
+  const [provas, setProvas] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Load races from API
+  useEffect(() => {
+    const loadProvas = async () => {
+      try {
+        setLoading(true);
+        const provasData = await ProvasService.getRaces();
+        setProvas(provasData);
+      } catch (error) {
+        console.error('Erro ao carregar provas:', error);
+        toast.error('Erro ao carregar provas');
+        setProvas([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadProvas();
+  }, []);
 
   const handleToggleDistancia = (distancia: string) => {
     setDistanciasSelecionadas(prev =>
@@ -69,7 +93,7 @@ export function Provas() {
     );
   };
 
-  const handleSalvarProva = () => {
+  const handleSalvarProva = async () => {
     const todasDistancias = [...distanciasSelecionadas];
     if (distanciaOutra.trim()) {
       todasDistancias.push(distanciaOutra.trim());
@@ -82,22 +106,43 @@ export function Provas() {
       return;
     }
 
-    toast.success('✅ Prova cadastrada com sucesso', {
-      description: `${nomeProva} foi adicionada ao calendário`,
-    });
+    try {
+      await ProvasService.createRace({
+        nome: nomeProva,
+        distancias: todasDistancias,
+        cidade,
+        estado,
+        data: new Date(dataProva),
+        turno: turnoProva,
+        link: linkProva
+      });
 
-    setShowNovaProva(false);
-    setNomeProva('');
-    setDistanciasSelecionadas([]);
-    setDistanciaOutra('');
-    setCidade('');
-    setEstado('');
-    setDataProva('');
-    setTurnoProva('Manhã');
-    setLinkProva('');
+      // Reload races list
+      const provasData = await ProvasService.getRaces();
+      setProvas(provasData);
+
+      toast.success('✅ Prova cadastrada com sucesso', {
+        description: `${nomeProva} foi adicionada ao calendário`,
+      });
+
+      setShowNovaProva(false);
+      setNomeProva('');
+      setDistanciasSelecionadas([]);
+      setDistanciaOutra('');
+      setCidade('');
+      setEstado('');
+      setDataProva('');
+      setTurnoProva('Manhã');
+      setLinkProva('');
+    } catch (error) {
+      console.error('Erro ao criar prova:', error);
+      toast.error('❌ Erro ao criar prova', {
+        description: 'Tente novamente.',
+      });
+    }
   };
 
-  const provasFiltradas = provasMock.filter(prova => {
+  const provasFiltradas = provas.filter((prova: any) => {
     const matchAno = prova.ano === Number(anoFiltro);
     const matchMes = prova.mes === Number(mesSelecionado);
     return matchAno && matchMes;
@@ -132,17 +177,15 @@ export function Provas() {
     }
   };
 
-  const totalProvas = provasMock.filter(p => p.ano === Number(anoFiltro)).length;
-  const provasProximoMes = provasMock.filter(p => {
+  const totalProvas = provas.filter((p: any) => p.ano === Number(anoFiltro)).length;
+  const provasProximoMes = provas.filter((p: any) => {
     const hoje = new Date();
-    const proximoMes = hoje.getMonth() + 2; // +1 para índice zero-based, +1 para próximo mês
+    const proximoMes = hoje.getMonth() + 1;
     return p.mes === proximoMes && p.ano === Number(anoFiltro);
-  }).length;
-
-  // Contar provas por mês
+  }).length;  // Contar provas por mês
   const provasPorMes = MESES.map(mes => ({
     ...mes,
-    quantidade: provasMock.filter(p => p.mes === mes.numero && p.ano === Number(anoFiltro)).length,
+    quantidade: provas.filter((p: any) => p.mes === mes.numero && p.ano === Number(anoFiltro)).length,
   }));
 
   return (
@@ -307,7 +350,7 @@ export function Provas() {
                             <div>
                               <p className="text-sm text-gray-600 mb-2">Distâncias disponíveis:</p>
                               <div className="flex flex-wrap gap-2">
-                                {prova.distancias.map(distancia => (
+                                {prova.distancias.map((distancia: string) => (
                                   <Badge 
                                     key={distancia} 
                                     className={getDistanciaColor(distancia)}
