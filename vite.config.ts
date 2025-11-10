@@ -57,4 +57,7 @@
       port: 5174,
       open: true,
     },
+    preview: {
+      port: 5174,
+    },
   });

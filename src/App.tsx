@@ -1,26 +1,15 @@
-import { useState } from 'react';
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoadingSpinner } from './components/ui/LoadingSpinner';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
-import { Dashboard } from './components/dashboard/Dashboard';
-import { PlanosList } from './components/planos/PlanosList';
-import { PlanoCriacao } from './components/planos/PlanoCriacao';
-import { Desafios } from './components/desafios/Desafios';
-import { TesteFisico } from './components/testes/TesteFisico';
-import { Provas } from './components/provas/Provas';
-import { Alunos } from './components/alunos/Alunos';
-import { Assinaturas } from './components/settings/Assinaturas';
-import { ConvidarAmigo } from './components/settings/ConvidarAmigo';
-import { Configuracoes } from './components/settings/Configuracoes';
-import { MeusDados } from './components/settings/MeusDados';
-
-type Page = 'dashboard' | 'planos' | 'criar-plano' | 'desafios' | 'testes' | 'provas' | 'alunos' | 'assinaturas' | 'convidar-amigo' | 'configuracoes' | 'meus-dados';
+import { AppRoutes } from './routes/AppRoutes';
 
 function AppContent() {
   const { isLoading, isAuthenticated } = useAuth();
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const location = useLocation();
+  const navigate = useNavigate();
 
   if (isLoading) {
     return <LoadingSpinner />;
@@ -31,32 +20,48 @@ function AppContent() {
   }
 
   const handleNavigate = (page: string) => {
-    setCurrentPage(page as Page);
+    // Mapear os nomes das páginas antigas para as rotas
+    const routeMap: { [key: string]: string } = {
+      'dashboard': '/dashboard',
+      'planos': '/planos',
+      'criar-plano': '/planos/criar',
+      'desafios': '/desafios',
+      'testes': '/testes',
+      'provas': '/provas',
+      'alunos': '/alunos',
+      'configuracoes': '/configuracoes',
+      'meus-dados': '/configuracoes/meus-dados',
+      'assinaturas': '/configuracoes/assinaturas',
+      'convidar-amigo': '/configuracoes/convidar-amigo',
+    };
+    
+    navigate(routeMap[page] || '/dashboard');
   };
 
   const getPageTitle = () => {
-    switch (currentPage) {
-      case 'dashboard':
+    const path = location.pathname;
+    switch (path) {
+      case '/dashboard':
         return 'Dashboard';
-      case 'planos':
+      case '/planos':
         return 'Planos de Treino';
-      case 'criar-plano':
+      case '/planos/criar':
         return 'Criar Novo Plano';
-      case 'desafios':
+      case '/desafios':
         return 'Desafios';
-      case 'testes':
+      case '/testes':
         return 'Testes Físicos';
-      case 'provas':
+      case '/provas':
         return 'Calendário de Provas';
-      case 'alunos':
+      case '/alunos':
         return 'Alunos';
-      case 'meus-dados':
+      case '/configuracoes/meus-dados':
         return 'Meus Dados';
-      case 'assinaturas':
+      case '/configuracoes/assinaturas':
         return 'Assinaturas';
-      case 'convidar-amigo':
+      case '/configuracoes/convidar-amigo':
         return 'Convidar Amigo';
-      case 'configuracoes':
+      case '/configuracoes':
         return 'Configurações';
       default:
         return 'RunCoach Pro';
@@ -64,72 +69,75 @@ function AppContent() {
   };
 
   const getPageSubtitle = () => {
-    switch (currentPage) {
-      case 'dashboard':
+    const path = location.pathname;
+    switch (path) {
+      case '/dashboard':
         return 'Visão geral do desempenho e atividades';
-      case 'planos':
+      case '/planos':
         return 'Gerencie seus planos de treino';
-      case 'criar-plano':
+      case '/planos/criar':
         return 'Configure um novo plano de treino';
-      case 'desafios':
+      case '/desafios':
         return 'Acompanhe os desafios motivacionais';
-      case 'testes':
+      case '/testes':
         return 'Registre e acompanhe testes físicos';
-      case 'provas':
+      case '/provas':
         return 'Gerencie o calendário de eventos';
-      case 'alunos':
+      case '/alunos':
         return 'Gerencie seus atletas';
-      case 'meus-dados':
+      case '/configuracoes/meus-dados':
         return 'Gerencie suas informações pessoais e profissionais';
-      case 'assinaturas':
+      case '/configuracoes/assinaturas':
         return 'Gerencie seu plano e faturamento';
-      case 'convidar-amigo':
+      case '/configuracoes/convidar-amigo':
         return 'Compartilhe e ganhe descontos';
-      case 'configuracoes':
+      case '/configuracoes':
         return 'Segurança, integrações e preferências';
       default:
         return '';
     }
   };
 
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'dashboard':
-        return <Dashboard onNavigate={handleNavigate} />;
-      case 'planos':
-        return <PlanosList onNavigate={handleNavigate} />;
-      case 'criar-plano':
-        return <PlanoCriacao onVoltar={() => setCurrentPage('planos')} />;
-      case 'desafios':
-        return <Desafios />;
-      case 'testes':
-        return <TesteFisico />;
-      case 'provas':
-        return <Provas />;
-      case 'alunos':
-        return <Alunos />;
-      case 'meus-dados':
-        return <MeusDados />;
-      case 'assinaturas':
-        return <Assinaturas />;
-      case 'convidar-amigo':
-        return <ConvidarAmigo />;
-      case 'configuracoes':
-        return <Configuracoes />;
+  const getCurrentPage = () => {
+    const path = location.pathname;
+    // Mapear rotas para os nomes de páginas antigos para compatibilidade com Sidebar
+    switch (path) {
+      case '/dashboard':
+        return 'dashboard';
+      case '/planos':
+        return 'planos';
+      case '/planos/criar':
+        return 'criar-plano';
+      case '/desafios':
+        return 'desafios';
+      case '/testes':
+        return 'testes';
+      case '/provas':
+        return 'provas';
+      case '/alunos':
+        return 'alunos';
+      case '/configuracoes':
+        return 'configuracoes';
+      case '/configuracoes/meus-dados':
+        return 'meus-dados';
+      case '/configuracoes/assinaturas':
+        return 'assinaturas';
+      case '/configuracoes/convidar-amigo':
+        return 'convidar-amigo';
       default:
-        return <Dashboard onNavigate={handleNavigate} />;
+        return 'dashboard';
     }
   };
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar currentPage={currentPage} onNavigate={handleNavigate} />
+      <Sidebar currentPage={getCurrentPage()} onNavigate={handleNavigate} />
       
       <main className="flex-1 overflow-auto">
         <Header title={getPageTitle()} subtitle={getPageSubtitle()} />
         
         <div className="p-8">
-          {renderPage()}
+          <AppRoutes onNavigate={handleNavigate} />
         </div>
       </main>
 
@@ -144,8 +152,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Home, FileText, PlusCircle, Trophy, Users, Settings, LogOut, Activity, Flag, MessageSquare, Star, Send, Menu, CreditCard, UserPlus, Gift, UserCircle, ChevronUp } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
@@ -8,7 +9,7 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { professorLogado } from '../../lib/mockData';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface SidebarProps {
   currentPage: string;
@@ -51,13 +52,15 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     setMensagem('');
     setShowFeedbackModal(false);
   };
+  const location = useLocation();
+  
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'planos', label: 'Planos de Treino', icon: FileText },
-    { id: 'desafios', label: 'Desafios', icon: Trophy },
-    { id: 'testes', label: 'Teste Físico', icon: Activity },
-    { id: 'provas', label: 'Provas', icon: Flag },
-    { id: 'alunos', label: 'Alunos', icon: Users },
+    { id: 'dashboard', label: 'Dashboard', icon: Home, path: '/dashboard' },
+    { id: 'planos', label: 'Planos de Treino', icon: FileText, path: '/planos' },
+    { id: 'desafios', label: 'Desafios', icon: Trophy, path: '/desafios' },
+    { id: 'testes', label: 'Teste Físico', icon: Activity, path: '/testes' },
+    { id: 'provas', label: 'Provas', icon: Flag, path: '/provas' },
+    { id: 'alunos', label: 'Alunos', icon: Users, path: '/alunos' },
   ];
 
   return (
@@ -79,12 +82,12 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       <nav className="flex-1 p-4 space-y-1">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = currentPage === item.id;
+          const isActive = location.pathname === item.path || currentPage === item.id;
           
           return (
-            <button
+            <Link
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              to={item.path}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                 isActive
                   ? 'bg-blue-50 text-blue-700'
@@ -95,7 +98,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
             >
               <Icon className="w-5 h-5" />
               <span>{item.label}</span>
-            </button>
+            </Link>
           );
         })}
       </nav>
