@@ -10,7 +10,7 @@ import { Progress } from '../ui/progress';
 import { Badge } from '../ui/badge';
 import { Skeleton } from '../ui/skeleton';
 import { dicasDoDia } from '../../lib/mockData';
-import { DashboardService } from '../../lib/services';
+import { DashboardService, ProvasService, DesafiosService } from '../../lib/services';
 import { Alert, AlertDescription } from '../ui/alert';
 import {
   Tooltip,
@@ -65,6 +65,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   // Real data from API
   const [dashboardMetrics, setDashboardMetrics] = useState<any>(null);
   const [treinosStats, setTreinosStats] = useState<any[]>([]);
+  const [proximasProvas, setProximasProvas] = useState<any[]>([]);
+  const [desafiosAtivosLista, setDesafiosAtivosLista] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Load dashboard data
@@ -72,9 +74,14 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     const loadDashboardData = async () => {
       try {
         setLoading(true);
-        const [metricsResponse, trainingStatsResponse] = await Promise.all([
+        const [metricsResponse, trainingStatsResponse, proximasProvasResponse, desafiosResponse] = await Promise.all([
           DashboardService.getMetrics(),
-          DashboardService.getTrainingStats()
+          DashboardService.getTrainingStats(),
+          ProvasService.getRaces({ 
+            month: new Date().getMonth() + 1,
+            year: new Date().getFullYear()
+          }).catch(() => ({ races: [] })), // Fallback se der erro
+          DesafiosService.getChallenges().catch(() => []) // Fallback se der erro
         ]);
         
         setDashboardMetrics(metricsResponse.metrics);
@@ -84,6 +91,10 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           mes: MESES[stat.mes - 1]?.abrev || stat.mes
         }));
         setTreinosStats(mappedStats);
+        
+        // Set races and challenges
+        setProximasProvas(proximasProvasResponse.races || []);
+        setDesafiosAtivosLista(Array.isArray(desafiosResponse) ? desafiosResponse.filter((d: any) => d.status === 'Ativo') : []);
       } catch (error) {
         console.error('Error loading dashboard data:', error);
         // Keep empty data on error, no fallbacks
@@ -95,6 +106,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           atividadesRecentes: []
         });
         setTreinosStats([]);
+        setProximasProvas([]);
+        setDesafiosAtivosLista([]);
       } finally {
         setLoading(false);
       }
@@ -103,12 +116,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     loadDashboardData();
   }, []);
 
-  // Use real data or fallback values
+  // Use real data with proper fallbacks
   const alunosAtivos = dashboardMetrics?.alunosAtivos || 0;
   const planosAtivos = dashboardMetrics?.planosAtivos || 0;
   const desafiosAtivos = dashboardMetrics?.desafiosAtivos || 0;
   const taxaConclusao = dashboardMetrics?.taxaConclusao || 87;
-  const mediaProfessores = 75; // Keep mock for now
 
   const metricas = [
     { 
@@ -117,8 +129,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       icon: Users, 
       cor: 'text-blue-600', 
       bgCor: 'bg-blue-100',
-      variacao: '+2',
-      feedback: '+12% vs mês anterior',
+      variacao: dashboardMetrics?.alunosVariacao || '+0%',
+      feedback: dashboardMetrics?.alunosFeedback || 'Dados em análise',
     },
     { 
       label: 'Planos Ativos', 
@@ -126,8 +138,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       icon: FileText, 
       cor: 'text-green-600', 
       bgCor: 'bg-green-100',
-      variacao: '+1',
-      feedback: '3 novos este mês',
+      variacao: dashboardMetrics?.planosVariacao || '+0',
+      feedback: dashboardMetrics?.planosFeedback || 'Sem novos planos',
     },
     { 
       label: 'Desafios em Andamento', 
@@ -135,8 +147,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       icon: Trophy, 
       cor: 'text-orange-600', 
       bgCor: 'bg-orange-100',
-      variacao: '0',
-      feedback: '85% taxa de engajamento',
+      variacao: dashboardMetrics?.desafiosVariacao || '0',
+      feedback: dashboardMetrics?.desafiosFeedback || 'Taxa de engajamento em análise',
     },
     { 
       label: 'Taxa de Conclusão', 
@@ -144,8 +156,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       icon: TrendingUp, 
       cor: 'text-purple-600', 
       bgCor: 'bg-purple-100',
-      variacao: '+5%',
-      feedback: `+${taxaConclusao - mediaProfessores}% vs média`,
+      variacao: dashboardMetrics?.conclusaoVariacao || '+0%',
+      feedback: dashboardMetrics?.conclusaoFeedback || 'Comparando com média',
     },
   ];
 
@@ -195,11 +207,13 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const atividadesRecentes = dashboardMetrics?.atividadesRecentes || [];
   const atividadesFiltradas = filtroAtividade === 'todos' 
     ? atividadesRecentes 
-    : atividadesRecentes.filter(a => a.tipo === filtroAtividade);
+    : atividadesRecentes.filter((a: any) => a.tipo === filtroAtividade);
 
-  // TODO: Integrate with real data from API
-  const provasFiltradas: any[] = [];
-  const desafiosAtivosDetalhes: any[] = [];
+  // Filter races for current month
+  const provasFiltradas = proximasProvas.filter((prova: any) => 
+    new Date(prova.data).getMonth() + 1 === mesSelecionadoProvas
+  );
+  const desafiosAtivosDetalhes = desafiosAtivosLista;
 
   const formatarData = (data: Date) => {
     return new Intl.DateTimeFormat('pt-BR', {
@@ -432,7 +446,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                   </div>
                   <AlertDescription className="text-gray-700">
                     <p className="mb-2">
-                      Seus alunos estão apresentando uma taxa de conclusão {taxaConclusao}% superior à média geral ({mediaProfessores}%). 
+                      Seus alunos estão apresentando uma taxa de conclusão {taxaConclusao}% superior à média geral ({dashboardMetrics?.mediaProfessores || 75}%). 
                       Continue incentivando treinos de recuperação e descanso para manter esse desempenho!
                     </p>
                     <p className="text-xs text-purple-700">
@@ -728,7 +742,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           <CardContent>
             <div className="space-y-3">
               <AnimatePresence mode="popLayout">
-                {atividadesFiltradas.map((atividade, idx) => {
+                {atividadesFiltradas.map((atividade: any, idx: number) => {
                   const icones = {
                     plano: FileText,
                     desafio: Trophy,

@@ -53,6 +53,7 @@
       target: 'esnext',
       outDir: 'build',
     },
+    publicDir: 'public',
     server: {
       port: 5174,
       open: true,

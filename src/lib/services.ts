@@ -1,4 +1,5 @@
 import { api } from './api';
+import { Aluno } from '../types';
 
 // Dashboard Services
 export class DashboardService {
@@ -26,47 +27,47 @@ export class DashboardService {
 
 // Athletes Services
 export class AlunosService {
-  static async getAthletes() {
+  static async getAthletes(): Promise<Aluno[]> {
     try {
-      console.log('Fetching athletes from API...');
       const response = await api.get('/users/athletes');
-      console.log('Athletes response:', response);
       
-      // Transform backend data to match frontend interface
-      const transformedAthletes = response.athletes.map((athlete: any) => ({
-        id: athlete.user.id, // Use user.id for UI display
-        athleteId: athlete.id, // Keep athlete profile ID for API operations
+      // Check if response has athletes property
+      if (!response || !response.athletes) {
+        console.error('Invalid API response structure:', response);
+        return [];
+      }
+      
+      return response.athletes.map((athlete: any) => ({
+        id: athlete.user.id,
+        athleteId: athlete.id, // Store the athlete profile ID for assignments
         nome: athlete.user.name,
         email: athlete.user.email,
+        foto: athlete.user.avatar,
         telefone: athlete.user.phone || '',
         idade: athlete.user.age || 0,
-        nivel: this.mapLevel(athlete.level),
-        status: this.mapStatus(athlete.status),
-        foto: athlete.user.avatar || '',
-        planoAtual: athlete.currentPlan?.name || undefined,
-        progressoAtual: athlete.currentProgress || 0,
+        status: AlunosService.mapStatusFromBackend(athlete.status),
+        nivel: AlunosService.mapLevelFromBackend(athlete.level),
+        planoAtual: athlete.currentPlan?.name || null,
         treinosConcluidos: athlete.completedTrainings || 0,
-        tempoMedio: athlete.averageTime || '',
-        ritmoMedio: athlete.averagePace || '',
-        dataCadastro: new Date(athlete.user.createdAt || new Date())
+        tempoMedio: athlete.averageTime || '-',
+        ritmoMedio: athlete.averagePace || '-',
+        progressoAtual: athlete.currentProgress || 0,
+        dataCadastro: new Date(athlete.user.createdAt)
       }));
-      
-      console.log('Transformed athletes:', transformedAthletes);
-      return transformedAthletes;
     } catch (error) {
-      console.error('Error in getAthletes:', error);
+      console.error('Error fetching athletes:', error);
       throw error;
     }
-  }
-
-  static async createAthlete(athleteData: any) {
+  }  static async createAthlete(athleteData: any) {
     try {
       console.log('Creating athlete:', athleteData);
       const response = await api.post('/auth/register-athlete', {
         name: athleteData.nome,
         email: athleteData.email,
         phone: athleteData.telefone,
-        age: athleteData.idade
+        age: athleteData.idade,
+        level: AlunosService.mapLevelToBackend(athleteData.nivel),
+        status: AlunosService.mapStatusToBackend(athleteData.status)
       });
       console.log('Create athlete response:', response);
       return response;
@@ -83,7 +84,9 @@ export class AlunosService {
         name: athleteData.nome,
         email: athleteData.email,
         phone: athleteData.telefone,
-        age: athleteData.idade
+        age: athleteData.idade,
+        level: AlunosService.mapLevelToBackend(athleteData.nivel),
+        status: AlunosService.mapStatusToBackend(athleteData.status)
       });
       console.log('Update athlete response:', response);
       return response;
@@ -114,7 +117,86 @@ export class AlunosService {
     return mapping[level as keyof typeof mapping] || 'Iniciante';
   }
 
+  static async getAthleteEvolution(athleteId: string, weeks = 6) {
+    try {
+      console.log('Fetching athlete evolution:', athleteId);
+      const response = await api.get(`/users/${athleteId}/evolution?weeks=${weeks}`);
+      console.log('Evolution response:', response);
+      return response;
+    } catch (error) {
+      console.error('Error getting athlete evolution:', error);
+      throw error;
+    }
+  }
+
+  static async getAthletePlanHistory(athleteId: string) {
+    try {
+      console.log('Fetching athlete plan history:', athleteId);
+      const response = await api.get(`/users/${athleteId}/plan-history`);
+      console.log('Plan history response:', response);
+      return response;
+    } catch (error) {
+      console.error('Error getting athlete plan history:', error);
+      throw error;
+    }
+  }
+
+  static async getAthleteTrainings(athleteId: string, planId?: string, limit = 10) {
+    try {
+      const params = new URLSearchParams();
+      if (planId) params.append('planId', planId);
+      params.append('limit', limit.toString());
+      
+      const queryString = params.toString();
+      const response = await api.get(`/trainings/athlete/${athleteId}${queryString ? `?${queryString}` : ''}`);
+      console.log('Athlete trainings response:', response);
+      return response;
+    } catch (error) {
+      console.error('Error getting athlete trainings:', error);
+      throw error;
+    }
+  }
+
   private static mapStatus(status: string): 'Pendente' | 'Ativo' | 'Inativo' {
+    const mapping = {
+      'PENDING': 'Pendente' as const,
+      'ACTIVE': 'Ativo' as const,
+      'INACTIVE': 'Inativo' as const
+    };
+    return mapping[status as keyof typeof mapping] || 'Pendente';
+  }
+
+  private static mapLevelToBackend(nivel: string): string {
+    const mapping = {
+      'Iniciante': 'BEGINNER',
+      'Intermediário': 'INTERMEDIATE', 
+      'Avançado': 'ADVANCED'
+    };
+    return mapping[nivel as keyof typeof mapping] || 'BEGINNER';
+  }
+
+  private static mapStatusToBackend(status: string): string {
+    const mapping = {
+      'Pendente': 'PENDING',
+      'Ativo': 'ACTIVE',
+      'Inativo': 'INACTIVE'
+    };
+    return mapping[status as keyof typeof mapping] || 'PENDING';
+  }
+
+  // Static methods for mapping backend data to frontend
+  private static mapLevelFromBackend(level?: string): 'Iniciante' | 'Intermediário' | 'Avançado' {
+    if (!level) return 'Iniciante';
+    const mapping = {
+      'BEGINNER': 'Iniciante' as const,
+      'INTERMEDIATE': 'Intermediário' as const,
+      'ADVANCED': 'Avançado' as const
+    };
+    return mapping[level as keyof typeof mapping] || 'Iniciante';
+  }
+
+  private static mapStatusFromBackend(status?: string): 'Pendente' | 'Ativo' | 'Inativo' {
+    if (!status) return 'Pendente';
     const mapping = {
       'PENDING': 'Pendente' as const,
       'ACTIVE': 'Ativo' as const,
@@ -127,20 +209,24 @@ export class AlunosService {
 // Training Plans Services
 export class PlanosService {
   static async getPlans() {
-    const response = await api.get('/plans/coach/my-plans');
-    return response.plans.map((plan: any) => ({
-      id: plan.id,
-      nome: plan.name,
-      categoria: this.mapCategory(plan.category),
-      duracao: plan.duration,
-      diasPorSemana: plan.daysPerWeek,
-      totalAlunos: plan._count.athletes,
-      status: this.mapPlanStatus(plan.status),
-      progresso: Math.floor(Math.random() * 100), // Calculate real progress later
-      criadoEm: new Date(plan.createdAt),
-      criadoPor: 'Você',
-      programacao: [] // Load separately when needed
-    }));
+    try {
+      const response = await api.get('/plans/coach/my-plans');
+      console.log('Response from API:', response);
+      return response.plans; // O ApiClient já faz response.json(), então não precisa de .data
+    } catch (error) {
+      console.error('Erro ao buscar planos:', error);
+      throw error;
+    }
+  }
+
+  static async getPlano(id: string) {
+    try {
+      const response = await api.get(`/plans/${id}`);
+      return response.plan; // O ApiClient já faz response.json(), então não precisa de .data
+    } catch (error) {
+      console.error('Erro ao buscar plano:', error);
+      throw error;
+    }
   }
 
   static async createPlan(planData: any) {
@@ -165,6 +251,17 @@ export class PlanosService {
 
   static async updateWeeklyProgramming(planId: string, week: number, programming: any) {
     return api.put(`/plans/${planId}/weekly-programming/${week}`, programming);
+  }
+
+  static async getPlanProgress(planId: string) {
+    try {
+      const response = await api.get(`/plans/${planId}/progress`);
+      console.log('Plan progress response:', response);
+      return response.planProgress;
+    } catch (error) {
+      console.error('Error fetching plan progress:', error);
+      throw error;
+    }
   }
 
   private static mapCategory(category: string): string {
@@ -288,7 +385,15 @@ export class TestesService {
   }
 
   static async getAthleteStats(athleteId: string) {
-    return api.get(`/physical-tests/stats/${athleteId}`);
+    try {
+      console.log('Fetching athlete physical test stats:', athleteId);
+      const response = await api.get(`/physical-tests/stats/${athleteId}`);
+      console.log('Physical test stats response:', response);
+      return response;
+    } catch (error) {
+      console.error('Error getting athlete stats:', error);
+      throw error;
+    }
   }
 
   private static mapTestType(tipoTeste: string): string {
@@ -373,5 +478,53 @@ export class ProvasService {
       'Noite': 'EVENING'
     };
     return mapping[turno as keyof typeof mapping];
+  }
+}
+
+// Notifications Services
+export class NotificationsService {
+  static async getNotifications(unreadOnly = false, limit = 20) {
+    try {
+      const params = new URLSearchParams();
+      if (unreadOnly) params.append('unreadOnly', 'true');
+      params.append('limit', limit.toString());
+      
+      const queryString = params.toString();
+      const response = await api.get(`/notifications${queryString ? `?${queryString}` : ''}`);
+      return response.notifications || [];
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      return [];
+    }
+  }
+
+  static async getUnreadCount() {
+    try {
+      const response = await api.get('/notifications/unread-count');
+      return response.count || 0;
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+      return 0;
+    }
+  }
+
+  static async markAsRead(notificationId: string) {
+    try {
+      const response = await api.put(`/notifications/${notificationId}/read`, {});
+      return response;
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      throw error;
+    }
+  }
+
+  static async markAllAsRead() {
+    try {
+      const response = await api.put('/notifications/mark-all-read', {});
+      return response;
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+      throw error;
+    }
   }
 }

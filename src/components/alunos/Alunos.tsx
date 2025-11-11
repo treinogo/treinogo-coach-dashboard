@@ -113,7 +113,9 @@ export function Alunos() {
         nome: novoAluno.nome,
         email: novoAluno.email,
         telefone: novoAluno.telefone,
-        idade: novoAluno.idade
+        idade: novoAluno.idade,
+        nivel: novoAluno.nivel,
+        status: novoAluno.status
       });
 
       // Reload the athletes list to get the latest data
@@ -140,7 +142,9 @@ export function Alunos() {
         nome: alunoAtualizado.nome,
         email: alunoAtualizado.email,
         telefone: alunoAtualizado.telefone,
-        idade: alunoAtualizado.idade
+        idade: alunoAtualizado.idade,
+        nivel: alunoAtualizado.nivel,
+        status: alunoAtualizado.status
       });
       
       // Recarregar lista de alunos do backend

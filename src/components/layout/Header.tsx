@@ -7,9 +7,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '../ui/popover';
-import { notificacoesMock } from '../../lib/mockData';
 import { ScrollArea } from '../ui/scroll-area';
 import { useAuth } from '../../contexts/AuthContext';
+import { NotificationsService } from '../../lib/services';
+import { useState, useEffect } from 'react';
 
 interface HeaderProps {
   title: string;
@@ -18,20 +19,55 @@ interface HeaderProps {
 
 export function Header({ title, subtitle }: HeaderProps) {
   const { user, logout } = useAuth();
-  const notificacoesNaoLidas = notificacoesMock.filter(n => !n.lida).length;
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+
+  useEffect(() => {
+    loadNotifications();
+    loadUnreadCount();
+    
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(() => {
+      loadUnreadCount();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadNotifications = async () => {
+    try {
+      setLoadingNotifications(true);
+      const notificationsData = await NotificationsService.getNotifications(false, 10);
+      setNotifications(notificationsData);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  const loadUnreadCount = async () => {
+    try {
+      const count = await NotificationsService.getUnreadCount();
+      setUnreadCount(count);
+    } catch (error) {
+      console.error('Error loading unread count:', error);
+    }
+  };
 
   const getIconeNotificacao = (tipo: string) => {
     switch (tipo) {
-      case 'sucesso':
+      case 'SUCCESS':
         return '✅';
-      case 'alerta':
+      case 'WARNING':
         return '⚠️';
-      case 'info':
+      case 'INFO':
         return 'ℹ️';
-      case 'erro':
+      case 'ERROR':
         return '❌';
       default:
-        return '📌';
+        return '�';
     }
   };
 
@@ -59,12 +95,12 @@ export function Header({ title, subtitle }: HeaderProps) {
             <PopoverTrigger asChild>
               <Button variant="outline" size="icon" className="relative" aria-label="Notificações">
                 <Bell className="w-5 h-5" />
-                {notificacoesNaoLidas > 0 && (
+                {unreadCount > 0 && (
                   <Badge
                     variant="destructive"
                     className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 text-xs"
                   >
-                    {notificacoesNaoLidas}
+                    {unreadCount}
                   </Badge>
                 )}
               </Button>
@@ -74,31 +110,44 @@ export function Header({ title, subtitle }: HeaderProps) {
                 <h3 className="text-gray-900">Notificações</h3>
                 <ScrollArea className="h-80">
                   <div className="space-y-2">
-                    {notificacoesMock.map((notificacao) => (
-                      <div
-                        key={notificacao.id}
-                        className={`p-3 rounded-lg border ${
-                          notificacao.lida
-                            ? 'bg-white border-gray-200'
-                            : 'bg-blue-50 border-blue-200'
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <span className="text-lg">{getIconeNotificacao(notificacao.tipo)}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-gray-900">{notificacao.mensagem}</p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {notificacao.data.toLocaleString('pt-BR', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </p>
+                    {loadingNotifications ? (
+                      <div className="text-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
+                        <p className="text-sm text-gray-500 mt-2">Carregando...</p>
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="text-center py-4">
+                        <Bell className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500">Nenhuma notificação</p>
+                      </div>
+                    ) : (
+                      notifications.map((notificacao) => (
+                        <div
+                          key={notificacao.id}
+                          className={`p-3 rounded-lg border ${
+                            notificacao.isRead
+                              ? 'bg-white border-gray-200'
+                              : 'bg-blue-50 border-blue-200'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="text-lg">{getIconeNotificacao(notificacao.type)}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900">{notificacao.title}</p>
+                              <p className="text-sm text-gray-700">{notificacao.message}</p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {new Date(notificacao.createdAt).toLocaleDateString('pt-BR', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </ScrollArea>
               </div>

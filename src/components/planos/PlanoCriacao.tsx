@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { PlusCircle, Save, Eye, Play, Zap, Wind, Mountain, Target, X, Plus, Users, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -46,6 +47,16 @@ interface PlanoCriacaoProps {
 }
 
 export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
+  const { id } = useParams<{ id: string }>();
+  const isEditMode = Boolean(id);
+
+  console.log('🔍 PlanoCriacao - Parâmetros:', { id, isEditMode });
+  
+  // Debug temporário para verificar se o componente está carregando
+  if (isEditMode && id) {
+    console.log('🔧 DEBUG: Modo de edição ativado para plano:', id);
+  }
+  
   // Dados reais do backend  
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [provas, setProvas] = useState<any[]>([]);
@@ -84,30 +95,182 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
   const [aplicarTodosAlunos, setAplicarTodosAlunos] = useState(false);
   const [popoverAberto, setPopoverAberto] = useState(false);
 
-  const diasSemana = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB', 'DOM'];
+  const diasSemana = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
   // Carrega dados iniciais
   useEffect(() => {
+    console.log('🚀 USEEFFECT executado - isEditMode:', isEditMode, 'id:', id);
+    
     const loadData = async () => {
       try {
         setLoading(true);
+        console.log('📥 Carregando alunos e provas...');
+        
         const [alunosData, provasData] = await Promise.all([
           AlunosService.getAthletes(),
           ProvasService.getRaces()
         ]);
+        
+        console.log('✅ Alunos carregados:', alunosData.length);
+        console.log('✅ Provas carregadas:', provasData.length);
+        
         setAlunos(alunosData);
         setProvas(provasData);
+
+        // Se estiver em modo de edição, carregar dados do plano
+        if (isEditMode && id) {
+          console.log('🎯 MODO DE EDIÇÃO DETECTADO - carregando plano:', id);
+          try {
+            await loadPlanData(id);
+            console.log('✅ Dados do plano carregados com sucesso');
+          } catch (error) {
+            console.error('❌ Erro ao carregar dados do plano:', error);
+          }
+        } else {
+          console.log('ℹ️ Modo de criação - não carregando dados do plano');
+        }
       } catch (error) {
-        console.error('Error loading data:', error);
+        console.error('❌ Erro ao carregar dados:', error);
         setAlunos([]);
         setProvas([]);
       } finally {
         setLoading(false);
+        console.log('✅ Loading concluído');
       }
     };
     
     loadData();
-  }, []);
+  }, [isEditMode, id]);
+
+  // Força carregamento dos dados quando em modo de edição
+  useEffect(() => {
+    if (!isEditMode || !id) return;
+    
+    // Força reload dos dados após 2 segundos se não houver programação
+    const timeoutId = setTimeout(() => {
+      if (Object.keys(programacao).length === 0) {
+        console.log('🔄 Forçando reload dos dados...');
+        loadPlanData(id).catch(console.error);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timeoutId);
+  }, [isEditMode, id, programacao]);
+
+  // Função para carregar dados do plano existente
+  const loadPlanData = async (planId: string) => {
+    try {
+      console.log('🔄 loadPlanData INICIADO para plano:', planId);
+      
+      const [planoData, programacaoData] = await Promise.all([
+        PlanosService.getPlano(planId),
+        PlanosService.getWeeklyProgramming(planId)
+      ]);
+
+      console.log('📋 Dados do plano recebidos:', planoData);
+      console.log('📅 Programação recebida:', programacaoData);
+
+      // Preencher campos do formulário com dados do plano
+      setNomePlano(planoData.name);
+      
+      // Mapear categoria do backend para frontend
+      const categoryMap: { [key: string]: string } = {
+        'FIVE_K': '5K',
+        'TEN_K': '10K',
+        'HALF_MARATHON': 'Meia Maratona',
+        'MARATHON': 'Maratona',
+        'BEGINNER': 'Iniciante',
+        'INTERMEDIATE': 'Intermediário',
+        'ADVANCED': 'Avançado'
+      };
+      
+      setCategoria(categoryMap[planoData.category] || planoData.category);
+      setDuracao(planoData.duration.toString());
+      setDiasPorSemana(planoData.daysPerWeek.toString());
+
+      console.log('✅ Campos básicos preenchidos:', {
+        nome: planoData.name,
+        categoria: categoryMap[planoData.category] || planoData.category,
+        duracao: planoData.duration,
+        diasPorSemana: planoData.daysPerWeek
+      });
+
+      // Carregar programação existente
+      if (programacaoData.weeklyProgramming && programacaoData.weeklyProgramming.length > 0) {
+        const programacaoCarregada: { [key: string]: TreinoDetalhe | null } = {};
+        
+        console.log('📋 Processando programação semanal:', programacaoData.weeklyProgramming);
+        
+        programacaoData.weeklyProgramming.forEach((semana: any) => {
+          const weekNumber = semana.week;
+          
+          // Mapear dias do backend para frontend
+          const diaMap: { [key: string]: string } = {
+            'monday': 'Seg',
+            'tuesday': 'Ter',
+            'wednesday': 'Qua',
+            'thursday': 'Qui',
+            'friday': 'Sex',
+            'saturday': 'Sáb',
+            'sunday': 'Dom'
+          };
+          
+          Object.entries(diaMap).forEach(([diaBackend, diaFrontend]) => {
+            if (semana[diaBackend]) {
+              try {
+                const treinoData = JSON.parse(semana[diaBackend]);
+                console.log(`Carregado treino ${diaFrontend} semana ${weekNumber}:`, treinoData);
+                
+                // Garantir que o treino tenha todos os campos necessários
+                const treinoCompleto: TreinoDetalhe = {
+                  tipo: treinoData.tipo,
+                  medida: treinoData.medida || 'KM',
+                  valor: treinoData.valor || '',
+                  zona: treinoData.zona || 'Z2',
+                  descricao: treinoData.descricao || treinoData.observacoes || '',
+                  // Campos específicos por tipo
+                  intervalos: treinoData.intervalos,
+                  tipoProvaTeste: treinoData.tipoProvaTeste,
+                  provaId: treinoData.provaId,
+                  tipoTeste: treinoData.tipoTeste,
+                  tempoDescanso: treinoData.tempoDescanso,
+                  // Campos de compatibilidade com backend
+                  distancia: treinoData.distancia,
+                  pace: treinoData.pace,
+                  observacoes: treinoData.observacoes
+                };
+                
+                console.log(`✅ Treino processado para ${diaFrontend} semana ${weekNumber}:`, treinoCompleto);
+                programacaoCarregada[`semana${weekNumber}-${diaFrontend}`] = treinoCompleto;
+              } catch (error) {
+                console.error('Erro ao fazer parse do treino:', error, 'Data:', semana[diaBackend]);
+              }
+            }
+          });
+        });
+        
+        console.log('📋 Programação carregada completa:', programacaoCarregada);
+        setProgramacao(programacaoCarregada);
+        console.log('✅ setProgramacao executado com:', Object.keys(programacaoCarregada).length, 'treinos');
+      } else {
+        console.log('⚠️ Nenhuma programação semanal encontrada');
+        setProgramacao({});
+      }
+
+      // Carregar alunos atribuídos ao plano
+      if (planoData.athletes && planoData.athletes.length > 0) {
+        const alunosAtribuidos = planoData.athletes.map((athlete: any) => athlete.userId);
+        console.log('👥 Alunos atribuídos ao plano:', planoData.athletes);
+        console.log('🆔 User IDs dos alunos:', alunosAtribuidos);
+        setAlunosSelecionados(alunosAtribuidos);
+      }
+      
+      console.log('🎉 loadPlanData CONCLUÍDO com sucesso');
+    } catch (error) {
+      console.error('❌ Erro em loadPlanData:', error);
+      toast.error('Erro ao carregar dados do plano');
+    }
+  };
 
   const tiposTreino: { tipo: TipoTreino; icon: any; cor: string; descricao: string }[] = [
     {
@@ -197,15 +360,26 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
       treinoDetalhe.tempoDescanso = tempoDescanso;
     }
 
-    setProgramacao(prev => ({
-      ...prev,
-      [diaParaCustomizar]: treinoDetalhe,
-    }));
+    console.log(`🎯 Adicionando treino customizado para ${diaParaCustomizar}:`, treinoDetalhe);
+
+    setProgramacao(prev => {
+      const newProgramacao = {
+        ...prev,
+        [diaParaCustomizar]: treinoDetalhe,
+      };
+      console.log('📅 Nova programação após adição:', newProgramacao);
+      return newProgramacao;
+    });
 
     setShowCustomizacao(false);
     setDiaParaCustomizar(null);
     setTipoTreinoModal(null);
     toast.success('Treino personalizado adicionado!');
+    
+    // Para debug - mostrar estado atual
+    setTimeout(() => {
+      console.log('🔄 Estado da programação após adição:', programacao);
+    }, 100);
   };
 
   const handleRemoverTreino = (semana: number, dia: string) => {
@@ -243,7 +417,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
         'Maratona': 'MARATHON'
       };
 
-      // Criar plano
+      // Criar ou atualizar plano
       const planData = {
         name: nomePlano,
         category: categoryMap[categoria] || categoria,
@@ -251,15 +425,49 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
         daysPerWeek: parseInt(diasPorSemana)
       };
 
-      const response = await PlanosService.createPlan(planData);
-      const planId = response.plan.id;
+      let planId: string;
+      if (isEditMode && id) {
+        // Atualizar plano existente
+        await PlanosService.updatePlan(id, planData);
+        planId = id;
+      } else {
+        // Criar novo plano
+        const response = await PlanosService.createPlan(planData);
+        planId = response.plan.id;
+      }
+
+      // Salvar programação semanal
+      const programacaoSemanal = organizarProgramacaoParaBackend();
+      console.log('💾 Salvando programação semanal:', programacaoSemanal);
+      
+      for (const [semana, treinos] of Object.entries(programacaoSemanal)) {
+        if (treinos && typeof treinos === 'object' && Object.keys(treinos).length > 0) {
+          console.log(`💾 Salvando semana ${semana}:`, treinos);
+          await PlanosService.updateWeeklyProgramming(planId, parseInt(semana), treinos);
+          console.log(`✅ Semana ${semana} salva com sucesso`);
+        }
+      }
 
       // Atribuir aos alunos se selecionado
       if (aplicarTodosAlunos || alunosSelecionados.length > 0) {
         const alunosData = alunos;
-        const alunosParaAtribuir = aplicarTodosAlunos 
-          ? alunosData.filter(a => a.status === 'Ativo').map(a => a.athleteId || a.id)
-          : alunosSelecionados;
+        let alunosParaAtribuir: string[] = [];
+        
+        if (aplicarTodosAlunos) {
+          // Para todos os alunos ativos, usar o athleteId
+          alunosParaAtribuir = alunosData
+            .filter(a => a.status === 'Ativo')
+            .map(a => a.athleteId)
+            .filter((id): id is string => Boolean(id)); // Remove valores undefined/null
+        } else {
+          // Para alunos selecionados, converter user IDs para athlete IDs
+          alunosParaAtribuir = alunosSelecionados
+            .map(userId => {
+              const aluno = alunosData.find(a => a.id === userId);
+              return aluno?.athleteId;
+            })
+            .filter((id): id is string => Boolean(id)); // Remove valores undefined/null
+        }
 
         if (alunosParaAtribuir.length > 0) {
           await PlanosService.assignPlanToAthletes(planId, alunosParaAtribuir);
@@ -274,21 +482,50 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
         mensagemAlunos = ` e aplicado a ${alunosSelecionados.length} aluno(s)`;
       }
 
+      const acao = isEditMode ? 'atualizado' : 'criado';
       toast.success('✅ Plano salvo com sucesso', {
-        description: `O plano "${nomePlano}" foi criado${mensagemAlunos}.`,
+        description: `O plano "${nomePlano}" foi ${acao}${mensagemAlunos}.`,
       });
 
-      // Limpar formulário
-      setNomePlano('');
-      setCategoria('');
-      setDuracao('4');
-      setDiasPorSemana('4');
-      setProgramacao({});
-      setAlunosSelecionados([]);
-      setAplicarTodosAlunos(false);
+      // Para modo de edição, recarregar os dados após o salvamento
+      if (isEditMode && planId) {
+        console.log('♻️ Recarregando dados após salvamento...');
+        setTimeout(async () => {
+          try {
+            // Force refresh dos dados
+            await loadPlanData(planId);
+            console.log('✅ Dados recarregados após salvamento');
+            
+            // Se ainda houver problemas, força um refresh da página
+            setTimeout(() => {
+              console.log('🔄 Verificando se os dados foram carregados...');
+              if (Object.keys(programacao).length === 0) {
+                console.log('⚠️ Dados não carregados, forçando refresh da página...');
+                window.location.reload();
+              }
+            }, 2000);
+          } catch (error) {
+            console.error('❌ Erro ao recarregar dados, forçando refresh:', error);
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
+          }
+        }, 1500);
+      }
+
+      // Limpar formulário apenas se for criação (não edição)
+      if (!isEditMode) {
+        setNomePlano('');
+        setCategoria('');
+        setDuracao('4');
+        setDiasPorSemana('4');
+        setProgramacao({});
+        setAlunosSelecionados([]);
+        setAplicarTodosAlunos(false);
+      }
       
-      // Voltar se callback fornecido
-      if (onVoltar) {
+      // Voltar se callback fornecido apenas para criação
+      if (onVoltar && !isEditMode) {
         setTimeout(() => onVoltar(), 1500);
       }
     } catch (error) {
@@ -323,6 +560,68 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
     setIntervalos(intervalos.filter((_, i) => i !== index));
   };
 
+  // Função para mapear dados do frontend para o formato do backend
+  const mapearTreinoParaBackend = (treino: TreinoDetalhe) => {
+    // Manter a estrutura original do frontend para compatibilidade
+    const treinoMapeado = { ...treino };
+    
+    // Se não tiver os campos do backend, tentar mapear
+    if (!treinoMapeado.distancia && treinoMapeado.valor && treinoMapeado.medida === 'KM') {
+      treinoMapeado.distancia = `${treinoMapeado.valor}km`;
+    }
+    
+    if (!treinoMapeado.observacoes && treinoMapeado.descricao) {
+      treinoMapeado.observacoes = treinoMapeado.descricao;
+    }
+    
+    return treinoMapeado;
+  };
+
+  const organizarProgramacaoParaBackend = () => {
+    const programacaoSemanal: { [semana: string]: any } = {};
+    
+    console.log('🔄 Organizando programação para o backend:', programacao);
+    
+    // Agrupar por semana
+    Object.entries(programacao).forEach(([key, treino]) => {
+      if (treino) {
+        console.log(`📝 Processando treino: ${key}`, treino);
+        const match = key.match(/^semana(\d+)-(.+)$/);
+        if (match) {
+          const semana = match[1];
+          const dia = match[2];
+          
+          if (!programacaoSemanal[semana]) {
+            programacaoSemanal[semana] = {};
+          }
+          
+          // Mapear dias para formato esperado pelo backend
+          const diaMap: { [key: string]: string } = {
+            'Seg': 'monday',
+            'Ter': 'tuesday', 
+            'Qua': 'wednesday',
+            'Qui': 'thursday',
+            'Sex': 'friday',
+            'Sáb': 'saturday',
+            'Dom': 'sunday'
+          };
+          
+          const diaBackend = diaMap[dia];
+          if (diaBackend) {
+            // Mapear treino para formato do backend
+            const treinoMapeado = mapearTreinoParaBackend(treino);
+            const treinoString = JSON.stringify(treinoMapeado);
+            console.log(`📤 Salvando treino ${dia} da semana ${semana} como:`, treinoString);
+            programacaoSemanal[semana][diaBackend] = treinoString;
+          }
+        }
+      }
+    });
+    
+    console.log('📋 Programação final para o backend:', programacaoSemanal);
+    return programacaoSemanal;
+  };
+
   const atualizarIntervalo = (index: number, field: 'valor' | 'zona', value: string) => {
     const novosIntervalos = [...intervalos];
     novosIntervalos[index] = {
@@ -342,7 +641,38 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <PlusCircle className="w-5 h-5 text-blue-600" />
-            Criar Novo Plano de Treino
+            {isEditMode ? 'Editar Plano de Treino' : 'Criar Novo Plano de Treino'}
+            {isEditMode && id && (
+              <div className="flex gap-2 ml-4">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    console.log('🔄 Forçando recarregamento...');
+                    loadPlanData(id);
+                  }}
+                >
+                  🔄 Recarregar Dados
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    console.log('📊 Estado atual da programação:', programacao);
+                    console.log('📈 Total de treinos:', Object.keys(programacao).length);
+                  }}
+                >
+                  📊 Ver Estado
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => window.location.reload()}
+                >
+                  🔄 Recarregar Página
+                </Button>
+              </div>
+            )}
           </CardTitle>
           <CardDescription>
             Configure os detalhes e a programação semanal do plano de treino
@@ -578,6 +908,14 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
                     const key = `semana${semana}-${dia}`;
                     const treinoNoDia = programacao[key];
                     const config = treinoNoDia ? getTreinoConfig(treinoNoDia.tipo) : null;
+                    
+                    // Debug para semana 1, segunda-feira
+                    if (semana === 1 && dia === 'Seg') {
+                      console.log(`🔍 RENDERIZAÇÃO - Chave: ${key}`);
+                      console.log(`🔍 RENDERIZAÇÃO - Treino encontrado:`, treinoNoDia);
+                      console.log(`🔍 RENDERIZAÇÃO - Config:`, config);
+                      console.log(`🔍 RENDERIZAÇÃO - Estado completo:`, programacao);
+                    }
 
                     return (
                       <div key={dia} className="text-center">
@@ -752,7 +1090,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
               </Button>
               <Button onClick={handleSalvar} className="bg-blue-600 hover:bg-blue-700">
                 <Save className="w-4 h-4 mr-2" />
-                Salvar Plano
+                {isEditMode ? 'Atualizar Plano' : 'Salvar Plano'}
               </Button>
             </div>
           </div>
@@ -1184,7 +1522,7 @@ export function PlanoCriacao({ onVoltar }: PlanoCriacaoProps = {}) {
           </div>
           <DialogFooter>
             <Button onClick={() => { handleSalvar(); setShowPreview(false); }}>
-              Confirmar e Salvar
+              {isEditMode ? 'Confirmar e Atualizar' : 'Confirmar e Salvar'}
             </Button>
             <Button variant="outline" onClick={() => setShowPreview(false)}>
               Fechar

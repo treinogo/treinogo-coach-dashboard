@@ -70,6 +70,10 @@ export interface TreinoDetalhe {
   tipoTeste?: '12min' | '3km' | '5km';
   // Intervalado
   tempoDescanso?: string; // 1'00", 1'30", 2'00", etc
+  // Campos adicionais para compatibilidade com backend
+  distancia?: string;
+  pace?: string;
+  observacoes?: string;
 }
 
 export interface Desafio {

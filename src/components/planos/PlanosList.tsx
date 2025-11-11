@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FileText, Plus, Eye, Edit, Trash2, UserPlus, Filter, Search, Mail, Copy } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -49,13 +50,14 @@ interface PlanosListProps {
 }
 
 export function PlanosList({ onNavigate }: PlanosListProps) {
+  const navigate = useNavigate();
   const [busca, setBusca] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
   const [filtroStatus, setFiltroStatus] = useState('todos');
   const [planoParaDeletar, setPlanoParaDeletar] = useState<string | null>(null);
   
   // Estados para dados da API
-  const [planos, setPlanos] = useState<PlanoTreino[]>([]);
+  const [planos, setPlanos] = useState<any[]>([]);
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -68,6 +70,20 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
   
   // Estados para visualização
   const [planoParaVisualizar, setPlanoParaVisualizar] = useState<string | null>(null);
+
+  // Mapeamento de categorias do backend para frontend
+  const mapCategory = (backendCategory: string) => {
+    const categoryMap: { [key: string]: string } = {
+      'FIVE_K': '5K',
+      'TEN_K': '10K', 
+      'HALF_MARATHON': 'Meia Maratona',
+      'MARATHON': 'Maratona',
+      'BEGINNER': 'Iniciante',
+      'INTERMEDIATE': 'Intermediário',
+      'ADVANCED': 'Avançado'
+    };
+    return categoryMap[backendCategory] || backendCategory;
+  };
 
   // Carrega dados iniciais
   useEffect(() => {
@@ -91,9 +107,9 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
     loadData();
   }, []);
 
-  const planosFiltrados = planos.filter((plano: PlanoTreino) => {
-    const matchBusca = plano.nome.toLowerCase().includes(busca.toLowerCase());
-    const matchCategoria = filtroCategoria === 'todas' || plano.categoria === filtroCategoria;
+  const planosFiltrados = planos.filter((plano: any) => {
+    const matchBusca = plano.name?.toLowerCase().includes(busca.toLowerCase());
+    const matchCategoria = filtroCategoria === 'todas' || mapCategory(plano.category) === filtroCategoria;
     const matchStatus = filtroStatus === 'todos' || plano.status === filtroStatus;
     return matchBusca && matchCategoria && matchStatus;
   });
@@ -182,7 +198,7 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
     const plano = planos.find(p => p.id === planoId);
     if (plano) {
       toast.success('Plano clonado com sucesso', {
-        description: `Uma cópia de "${plano.nome}" foi criada com o nome "${plano.nome} - Cópia".`,
+        description: `Uma cópia de "${plano.name}" foi criada com o nome "${plano.name} - Cópia".`,
       });
     }
   };
@@ -282,15 +298,15 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
               </CardContent>
             </Card>
           ))
-        ) : planosFiltrados.map((plano: PlanoTreino) => (
+        ) : planosFiltrados.map((plano: any) => (
           <Card key={plano.id} className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
-                  <CardTitle className="text-lg text-gray-900 truncate">{plano.nome}</CardTitle>
+                  <CardTitle className="text-lg text-gray-900 truncate">{plano.name}</CardTitle>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant={getBadgeVariant(plano.status)}>{plano.status}</Badge>
-                    <Badge variant="outline" className="text-xs">{plano.categoria}</Badge>
+                    <Badge variant="outline" className="text-xs">{mapCategory(plano.category)}</Badge>
                   </div>
                 </div>
                 <DropdownMenu>
@@ -313,7 +329,7 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => onNavigate('criar-plano')}>
+                    <DropdownMenuItem onClick={() => navigate(`/planos/editar/${plano.id}`)}>
                       <Edit className="w-4 h-4 mr-2" />
                       Editar
                     </DropdownMenuItem>
@@ -332,19 +348,19 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-gray-500">Duração</p>
-                  <p className="text-gray-900">{plano.duracao} semanas</p>
+                  <p className="text-gray-900">{plano.duration} semanas</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Dias/Semana</p>
-                  <p className="text-gray-900">{plano.diasPorSemana} dias</p>
+                  <p className="text-gray-900">{plano.daysPerWeek} dias</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Total Alunos</p>
-                  <p className="text-gray-900">{plano.totalAlunos} alunos</p>
+                  <p className="text-gray-900">{plano._count?.athletes || 0} alunos</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Criado por</p>
-                  <p className="text-gray-900 truncate">{plano.criadoPor}</p>
+                  <p className="text-gray-900 truncate">{plano.createdBy?.user?.name || 'Coach'}</p>
                 </div>
               </div>
 

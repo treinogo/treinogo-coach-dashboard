@@ -64,6 +64,9 @@ function AppContent() {
       case '/configuracoes':
         return 'Configurações';
       default:
+        if (path.startsWith('/planos/editar/')) {
+          return 'Editar Plano';
+        }
         return 'RunCoach Pro';
     }
   };
@@ -94,6 +97,9 @@ function AppContent() {
       case '/configuracoes':
         return 'Segurança, integrações e preferências';
       default:
+        if (path.startsWith('/planos/editar/')) {
+          return 'Modifique os detalhes e programação do plano';
+        }
         return '';
     }
   };

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { ArrowLeft, FileText, TrendingUp, Calendar, Clock, Activity, Award, Heart, Target, Utensils, Moon, Cigarette, Users as UsersIcon } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -16,47 +17,81 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { Aluno } from '../../types';
-import { toast } from 'sonner@2.0.3';
+import { AlunosService, TestesService } from '../../lib/services';
+import { toast } from 'sonner';
 
 interface AlunoPerfilProps {
   aluno: Aluno;
   onVoltar: () => void;
 }
 
-export function AlunoPerfil({ aluno, onVoltar }: AlunoPerfilProps) {
-  // Dados mock para o gráfico de evolução
-  const dadosEvolucao = [
-    { semana: 'Sem 1', corridas: 3, tempoMedio: 35 },
-    { semana: 'Sem 2', corridas: 4, tempoMedio: 38 },
-    { semana: 'Sem 3', corridas: 3, tempoMedio: 42 },
-    { semana: 'Sem 4', corridas: 4, tempoMedio: 45 },
-    { semana: 'Sem 5', corridas: 4, tempoMedio: 48 },
-    { semana: 'Sem 6', corridas: 5, tempoMedio: 50 },
-  ];
+interface DadosEvolucao {
+  semana: string;
+  corridas: number;
+  tempoMedio: number;
+}
 
-  const historicoplanos = [
-    {
-      id: '1',
-      nome: 'Preparação 10K',
-      periodo: 'Ago - Out 2024',
-      conclusao: 100,
-      status: 'Concluído',
-    },
-    {
-      id: '2',
-      nome: 'Iniciante 5K',
-      periodo: 'Mai - Jul 2024',
-      conclusao: 100,
-      status: 'Concluído',
-    },
-    {
-      id: '3',
-      nome: 'Base Aeróbica',
-      periodo: 'Mar - Abr 2024',
-      conclusao: 85,
-      status: 'Parcial',
-    },
-  ];
+interface PlanoHistorico {
+  id: string;
+  nome: string;
+  periodo: string;
+  conclusao: number;
+  status: string;
+}
+
+export function AlunoPerfil({ aluno, onVoltar }: AlunoPerfilProps) {
+  // States for real data
+  const [dadosEvolucao, setDadosEvolucao] = useState<DadosEvolucao[]>([]);
+  const [historicoplanos, setHistoricoPlanos] = useState<PlanoHistorico[]>([]);
+  const [testesFisicos, setTestesFisicos] = useState<any[]>([]);
+  const [estatisticasTestes, setEstatisticasTestes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingTestes, setLoadingTestes] = useState(false);
+
+  // Load real data on component mount
+  useEffect(() => {
+    const loadAthleteData = async () => {
+      try {
+        setLoading(true);
+        
+        // Load evolution data (use athlete ID for API call)
+        const athleteId = aluno.athleteId || aluno.id;
+        
+        const [evolutionResponse, planHistoryResponse, testsResponse, statsResponse] = await Promise.all([
+          AlunosService.getAthleteEvolution(athleteId),
+          AlunosService.getAthletePlanHistory(athleteId),
+          TestesService.getAthleteTests(athleteId),
+          TestesService.getAthleteStats(athleteId)
+        ]);
+
+        setDadosEvolucao(evolutionResponse.evolution || []);
+        setHistoricoPlanos(planHistoryResponse.planHistory || []);
+        setTestesFisicos(testsResponse.tests || []);
+        setEstatisticasTestes(statsResponse.stats || []);
+        
+      } catch (error) {
+        console.error('Error loading athlete data:', error);
+        toast.error('Erro ao carregar dados do atleta');
+        
+        // Fallback to mock data if API fails
+        setDadosEvolucao([
+          { semana: 'Sem 1', corridas: 0, tempoMedio: 0 },
+          { semana: 'Sem 2', corridas: 0, tempoMedio: 0 },
+          { semana: 'Sem 3', corridas: 0, tempoMedio: 0 },
+          { semana: 'Sem 4', corridas: 0, tempoMedio: 0 },
+          { semana: 'Sem 5', corridas: 0, tempoMedio: 0 },
+          { semana: 'Sem 6', corridas: 0, tempoMedio: 0 },
+        ]);
+        setHistoricoPlanos([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (aluno) {
+      loadAthleteData();
+    }
+  }, [aluno]);
 
   const getBadgeVariant = (status: string) => {
     return status === 'Ativo' ? 'default' : 'secondary';
@@ -244,34 +279,41 @@ export function AlunoPerfil({ aluno, onVoltar }: AlunoPerfilProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={dadosEvolucao}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="semana" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                }}
-              />
-              <Line
-                type="monotone"
-                dataKey="corridas"
-                stroke="#2563eb"
-                strokeWidth={2}
-                name="Corridas"
-              />
-              <Line
-                type="monotone"
-                dataKey="tempoMedio"
-                stroke="#f97316"
-                strokeWidth={2}
-                name="Tempo (min)"
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {loading ? (
+            <div className="flex items-center justify-center h-[300px]">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-2 text-gray-600">Carregando dados de evolução...</span>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={dadosEvolucao}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="semana" stroke="#6b7280" />
+                <YAxis stroke="#6b7280" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="corridas"
+                  stroke="#2563eb"
+                  strokeWidth={2}
+                  name="Corridas"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="tempoMedio"
+                  stroke="#f97316"
+                  strokeWidth={2}
+                  name="Tempo (min)"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
@@ -285,31 +327,44 @@ export function AlunoPerfil({ aluno, onVoltar }: AlunoPerfilProps) {
           <CardDescription>Planos de treino já aplicados a este aluno</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {historicoplanos.map((plano) => (
-              <div
-                key={plano.id}
-                className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-gray-900">{plano.nome}</h4>
-                    <Badge variant={plano.status === 'Concluído' ? 'default' : 'secondary'}>
-                      {plano.status}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-500 mb-3">{plano.periodo}</p>
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs text-gray-600">Taxa de Conclusão</p>
-                      <p className="text-xs text-gray-900">{plano.conclusao}%</p>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span className="ml-2 text-gray-600">Carregando histórico...</span>
+            </div>
+          ) : historicoplanos.length > 0 ? (
+            <div className="space-y-4">
+              {historicoplanos.map((plano) => (
+                <div
+                  key={plano.id}
+                  className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-gray-900">{plano.nome}</h4>
+                      <Badge variant={plano.status === 'Concluído' ? 'default' : 'secondary'}>
+                        {plano.status}
+                      </Badge>
                     </div>
-                    <Progress value={plano.conclusao} className="h-1.5" />
+                    <p className="text-sm text-gray-500 mb-3">{plano.periodo}</p>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-gray-600">Taxa de Conclusão</p>
+                        <p className="text-xs text-gray-900">{plano.conclusao}%</p>
+                      </div>
+                      <Progress value={plano.conclusao} className="h-1.5" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-600">Nenhum plano anterior encontrado</p>
+              <p className="text-sm text-gray-500 mt-1">Os planos aplicados a este atleta aparecerão aqui</p>
+            </div>
+          )}
 
           <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
             <p className="text-xs text-gray-600">
@@ -330,7 +385,7 @@ export function AlunoPerfil({ aluno, onVoltar }: AlunoPerfilProps) {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="historico-medico" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="historico-medico">
                 <Heart className="w-4 h-4 mr-2" />
                 Histórico Médico
@@ -338,6 +393,10 @@ export function AlunoPerfil({ aluno, onVoltar }: AlunoPerfilProps) {
               <TabsTrigger value="historico-treinamento">
                 <Target className="w-4 h-4 mr-2" />
                 Histórico de Treino
+              </TabsTrigger>
+              <TabsTrigger value="testes-fisicos">
+                <Activity className="w-4 h-4 mr-2" />
+                Testes Físicos
               </TabsTrigger>
               <TabsTrigger value="estilo-vida">
                 <Utensils className="w-4 h-4 mr-2" />
@@ -492,6 +551,152 @@ export function AlunoPerfil({ aluno, onVoltar }: AlunoPerfilProps) {
                   </CardContent>
                 </Card>
               </div>
+            </TabsContent>
+
+            {/* Testes Físicos */}
+            <TabsContent value="testes-fisicos" className="space-y-4 mt-4">
+              {loadingTestes ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-600">Carregando testes físicos...</span>
+                </div>
+              ) : (
+                <>
+                  {/* Estatísticas por Tipo de Teste */}
+                  {estatisticasTestes.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {estatisticasTestes.map((stat) => {
+                        const testTypeNames = {
+                          'TWELVE_MINUTES': '12 Minutos',
+                          'THREE_KM': '3km',
+                          'FIVE_KM': '5km'
+                        };
+                        
+                        const testTypeName = testTypeNames[stat.testType as keyof typeof testTypeNames] || stat.testType;
+                        
+                        return (
+                          <Card key={stat.testType}>
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <Activity className="w-4 h-4 text-blue-600" />
+                                {testTypeName}
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="space-y-3">
+                                <div>
+                                  <p className="text-sm text-gray-600 mb-1">Total de Testes</p>
+                                  <p className="text-2xl text-gray-900">{stat.count}</p>
+                                </div>
+                                
+                                {stat.improvement !== null && (
+                                  <>
+                                    <Separator />
+                                    <div>
+                                      <p className="text-sm text-gray-600 mb-1">Evolução</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className={`text-lg font-semibold ${stat.improvement > 0 ? 'text-green-600' : stat.improvement < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                                          {stat.improvement > 0 ? '+' : ''}{stat.improvement.toFixed(1)}%
+                                        </p>
+                                        {stat.improvement > 0 && <TrendingUp className="w-4 h-4 text-green-600" />}
+                                        {stat.improvement < 0 && <TrendingUp className="w-4 h-4 text-red-600 rotate-180" />}
+                                      </div>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        {stat.testType === 'TWELVE_MINUTES' 
+                                          ? 'Distância percorrida' 
+                                          : 'Tempo de conclusão'
+                                        }
+                                      </p>
+                                    </div>
+                                  </>
+                                )}
+                                
+                                {stat.tests && stat.tests.length > 0 && (
+                                  <>
+                                    <Separator />
+                                    <div>
+                                      <p className="text-sm text-gray-600 mb-1">Último Teste</p>
+                                      <p className="text-sm text-gray-900">
+                                        {new Date(stat.tests[stat.tests.length - 1].testDate).toLocaleDateString('pt-BR')}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        {stat.testType === 'TWELVE_MINUTES' 
+                                          ? `${stat.tests[stat.tests.length - 1].distance?.toFixed(2)}m` 
+                                          : `${stat.tests[stat.tests.length - 1].finalTime}`
+                                        }
+                                      </p>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Lista de Testes Recentes */}
+                  {testesFisicos.length > 0 ? (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">Histórico de Testes</CardTitle>
+                        <CardDescription>
+                          Últimos testes físicos realizados
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {testesFisicos.slice(0, 10).map((teste) => {
+                            const testTypeNames = {
+                              'TWELVE_MINUTES': '12 Minutos',
+                              'THREE_KM': '3km', 
+                              'FIVE_KM': '5km'
+                            };
+                            
+                            const testTypeName = testTypeNames[teste.testType as keyof typeof testTypeNames] || teste.testType;
+                            
+                            return (
+                              <div key={teste.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-blue-100 rounded-full">
+                                    <Activity className="w-4 h-4 text-blue-600" />
+                                  </div>
+                                  <div>
+                                    <h4 className="text-sm font-medium text-gray-900">{testTypeName}</h4>
+                                    <p className="text-xs text-gray-500">
+                                      {new Date(teste.testDate).toLocaleDateString('pt-BR')}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {teste.testType === 'TWELVE_MINUTES' 
+                                      ? `${teste.distance?.toFixed(2)}m` 
+                                      : teste.finalTime
+                                    }
+                                  </p>
+                                  {teste.pace && (
+                                    <p className="text-xs text-gray-500">
+                                      Pace: {teste.pace}/km
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Activity className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-600">Nenhum teste físico registrado</p>
+                      <p className="text-sm text-gray-500 mt-1">Os testes realizados pelo atleta aparecerão aqui</p>
+                    </div>
+                  )}
+                </>
+              )}
             </TabsContent>
 
             {/* Estilo de Vida */}
