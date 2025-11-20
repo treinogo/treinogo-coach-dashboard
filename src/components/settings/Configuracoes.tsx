@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings, Lock, Link2, Bell, Check, X, Save } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -7,18 +7,26 @@ import { Label } from '../ui/label';
 import { Separator } from '../ui/separator';
 import { Switch } from '../ui/switch';
 import { Badge } from '../ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { api } from '../../lib/api';
+
+interface Integration {
+  id: string;
+  platform: 'STRAVA' | 'POLAR' | 'GARMIN';
+  isConnected: boolean;
+  lastSync: string | null;
+}
 
 export function Configuracoes() {
   // Alteração de senha
   const [senhaAtual, setSenhaAtual] = useState('');
   const [novaSenha, setNovaSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Integrações
-  const [stravaConectado, setStravaConectado] = useState(true);
-  const [polarConectado, setPolarConectado] = useState(false);
-  const [garminConectado, setGarminConectado] = useState(true);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(true);
 
   // Notificações
   const [emailNotificacoes, setEmailNotificacoes] = useState(true);
@@ -27,8 +35,78 @@ export function Configuracoes() {
   const [pushNotificacoes, setPushNotificacoes] = useState(true);
   const [pushNovosAlunos, setPushNovosAlunos] = useState(true);
   const [pushTreinos, setPushTreinos] = useState(false);
+  const [isLoadingPreferences, setIsLoadingPreferences] = useState(true);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
 
-  const handleAlterarSenha = () => {
+  // Load preferences on mount
+  useEffect(() => {
+    loadPreferences();
+    loadIntegrations();
+  }, []);
+
+  const loadPreferences = async () => {
+    try {
+      const response = await api.get('/users/me/preferences');
+      console.log('Resposta completa da API:', response);
+
+      // A resposta já vem com .preferences direto
+      const prefs = response.preferences;
+
+      console.log('Preferências carregadas do banco:', prefs);
+
+      if (prefs) {
+        setEmailNotificacoes(prefs.emailNotifications ?? true);
+        setEmailRelatorios(prefs.emailReports ?? true);
+        setEmailDesafios(prefs.emailChallenges ?? false);
+        setPushNotificacoes(prefs.pushNotifications ?? true);
+        setPushNovosAlunos(prefs.pushNewAthletes ?? true);
+        setPushTreinos(prefs.pushTrainings ?? false);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar preferências:', error);
+      toast.error('Erro ao carregar preferências', {
+        description: 'Não foi possível carregar suas preferências.',
+      });
+    } finally {
+      setIsLoadingPreferences(false);
+    }
+  };
+
+  const loadIntegrations = async () => {
+    try {
+      const response = await api.get('/users/me/integrations');
+      console.log('Resposta de integrações:', response);
+      setIntegrations(response.integrations || []);
+    } catch (error) {
+      console.error('Erro ao carregar integrações:', error);
+    } finally {
+      setIsLoadingIntegrations(false);
+    }
+  };
+
+  const getIntegrationStatus = (platform: 'STRAVA' | 'POLAR' | 'GARMIN') => {
+    const integration = integrations.find(i => i.platform === platform);
+    return integration?.isConnected || false;
+  };
+
+  const getIntegrationLastSync = (platform: 'STRAVA' | 'POLAR' | 'GARMIN') => {
+    const integration = integrations.find(i => i.platform === platform);
+    if (!integration?.lastSync) return null;
+
+    const lastSync = new Date(integration.lastSync);
+    const now = new Date();
+    const diffMs = now.getTime() - lastSync.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+    if (diffHours < 1) return 'há alguns minutos';
+    if (diffHours === 1) return 'há 1 hora';
+    if (diffHours < 24) return `há ${diffHours} horas`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'há 1 dia';
+    return `há ${diffDays} dias`;
+  };
+
+  const handleAlterarSenha = async () => {
     if (!senhaAtual || !novaSenha || !confirmarSenha) {
       toast.error('Erro ao alterar senha', {
         description: 'Preencha todos os campos de senha.',
@@ -50,74 +128,99 @@ export function Configuracoes() {
       return;
     }
 
-    // Em produção, aqui seria feita a chamada à API
-    console.log('Senha alterada');
+    setIsChangingPassword(true);
 
-    toast.success('✅ Senha alterada!', {
-      description: 'Sua senha foi atualizada com sucesso.',
-    });
-
-    // Limpar campos
-    setSenhaAtual('');
-    setNovaSenha('');
-    setConfirmarSenha('');
-  };
-
-  const handleConectarStrava = () => {
-    if (stravaConectado) {
-      toast.success('Strava desconectado', {
-        description: 'Sua conta Strava foi desconectada.',
+    try {
+      await api.post('/users/me/change-password', {
+        currentPassword: senhaAtual,
+        newPassword: novaSenha,
       });
-      setStravaConectado(false);
-    } else {
-      toast.success('✅ Strava conectado!', {
-        description: 'Sua conta Strava foi conectada com sucesso.',
+
+      toast.success('✅ Senha alterada!', {
+        description: 'Sua senha foi atualizada com sucesso.',
       });
-      setStravaConectado(true);
+
+      // Limpar campos
+      setSenhaAtual('');
+      setNovaSenha('');
+      setConfirmarSenha('');
+    } catch (error: any) {
+      console.error('Erro ao alterar senha:', error);
+
+      const errorMessage = error.message || 'Erro ao alterar senha';
+
+      if (errorMessage.includes('Current password is incorrect')) {
+        toast.error('Senha atual incorreta', {
+          description: 'A senha atual informada está incorreta.',
+        });
+      } else {
+        toast.error('Erro ao alterar senha', {
+          description: errorMessage,
+        });
+      }
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
-  const handleConectarPolar = () => {
-    if (polarConectado) {
-      toast.success('Polar desconectado', {
-        description: 'Sua conta Polar foi desconectada.',
+  const handleToggleIntegration = async (platform: 'STRAVA' | 'POLAR' | 'GARMIN') => {
+    const isCurrentlyConnected = getIntegrationStatus(platform);
+    const platformName = platform.charAt(0) + platform.slice(1).toLowerCase();
+
+    try {
+      await api.post(`/users/me/integrations/${platform}`, {
+        connect: !isCurrentlyConnected
       });
-      setPolarConectado(false);
-    } else {
-      toast.success('✅ Polar conectado!', {
-        description: 'Sua conta Polar foi conectada com sucesso.',
+
+      // Reload integrations to get updated data
+      await loadIntegrations();
+
+      if (!isCurrentlyConnected) {
+        toast.success(`${platformName} conectado!`, {
+          description: `Sua conta ${platformName} foi conectada com sucesso.`,
+        });
+      } else {
+        toast.success(`${platformName} desconectado`, {
+          description: `Sua conta ${platformName} foi desconectada.`,
+        });
+      }
+    } catch (error) {
+      console.error(`Erro ao ${isCurrentlyConnected ? 'desconectar' : 'conectar'} ${platformName}:`, error);
+      toast.error('Erro na integração', {
+        description: `Não foi possível ${isCurrentlyConnected ? 'desconectar' : 'conectar'} ${platformName}.`,
       });
-      setPolarConectado(true);
     }
   };
 
-  const handleConectarGarmin = () => {
-    if (garminConectado) {
-      toast.success('Garmin desconectado', {
-        description: 'Sua conta Garmin foi desconectada.',
+  const handleSalvarPreferencias = async () => {
+    setIsSavingPreferences(true);
+
+    const preferencesToSave = {
+      emailNotifications: emailNotificacoes,
+      emailReports: emailRelatorios,
+      emailChallenges: emailDesafios,
+      pushNotifications: pushNotificacoes,
+      pushNewAthletes: pushNovosAlunos,
+      pushTrainings: pushTreinos,
+    };
+
+    console.log('Salvando preferências:', preferencesToSave);
+
+    try {
+      const response = await api.put('/users/me/preferences', preferencesToSave);
+      console.log('Resposta do backend:', response);
+
+      toast.success('Preferências salvas!', {
+        description: 'Suas preferências de notificação foram atualizadas.',
       });
-      setGarminConectado(false);
-    } else {
-      toast.success('✅ Garmin conectado!', {
-        description: 'Sua conta Garmin foi conectada com sucesso.',
+    } catch (error) {
+      console.error('Erro ao salvar preferências:', error);
+      toast.error('Erro ao salvar preferências', {
+        description: 'Não foi possível salvar suas preferências. Tente novamente.',
       });
-      setGarminConectado(true);
+    } finally {
+      setIsSavingPreferences(false);
     }
-  };
-
-  const handleSalvarPreferencias = () => {
-    console.log('Preferências salvas:', {
-      emailNotificacoes,
-      emailRelatorios,
-      emailDesafios,
-      pushNotificacoes,
-      pushNovosAlunos,
-      pushTreinos,
-    });
-
-    toast.success('✅ Preferências salvas!', {
-      description: 'Suas preferências de notificação foram atualizadas.',
-    });
   };
 
   return (
@@ -213,9 +316,13 @@ export function Configuracoes() {
           <Separator />
 
           <div className="flex justify-end">
-            <Button onClick={handleAlterarSenha} className="bg-orange-600 hover:bg-orange-700">
+            <Button
+              onClick={handleAlterarSenha}
+              disabled={isChangingPassword}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
               <Lock className="w-4 h-4 mr-2" />
-              Alterar Senha
+              {isChangingPassword ? 'Alterando...' : 'Alterar Senha'}
             </Button>
           </div>
         </CardContent>
@@ -244,7 +351,7 @@ export function Configuracoes() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="font-medium text-gray-900">Strava</h3>
-                  {stravaConectado && (
+                  {getIntegrationStatus('STRAVA') && (
                     <Badge className="bg-green-100 text-green-700 border-green-300">
                       <Check className="w-3 h-3 mr-1" />
                       Conectado
@@ -254,19 +361,20 @@ export function Configuracoes() {
                 <p className="text-sm text-gray-600">
                   Sincronize automaticamente seus treinos e atividades do Strava
                 </p>
-                {stravaConectado && (
+                {getIntegrationStatus('STRAVA') && getIntegrationLastSync('STRAVA') && (
                   <p className="text-xs text-gray-500 mt-2">
-                    Última sincronização: há 2 horas
+                    Última sincronização: {getIntegrationLastSync('STRAVA')}
                   </p>
                 )}
               </div>
             </div>
             <Button
-              onClick={handleConectarStrava}
-              variant={stravaConectado ? 'outline' : 'default'}
-              className={stravaConectado ? 'text-red-600 hover:text-red-700 hover:bg-red-50' : 'bg-orange-600 hover:bg-orange-700'}
+              onClick={() => handleToggleIntegration('STRAVA')}
+              variant={getIntegrationStatus('STRAVA') ? 'outline' : 'default'}
+              className={getIntegrationStatus('STRAVA') ? 'text-red-600 hover:text-red-700 hover:bg-red-50' : 'bg-orange-600 hover:bg-orange-700'}
+              disabled={isLoadingIntegrations}
             >
-              {stravaConectado ? (
+              {getIntegrationStatus('STRAVA') ? (
                 <>
                   <X className="w-4 h-4 mr-2" />
                   Desconectar
@@ -291,7 +399,7 @@ export function Configuracoes() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="font-medium text-gray-900">Polar</h3>
-                  {polarConectado && (
+                  {getIntegrationStatus('POLAR') && (
                     <Badge className="bg-green-100 text-green-700 border-green-300">
                       <Check className="w-3 h-3 mr-1" />
                       Conectado
@@ -301,19 +409,20 @@ export function Configuracoes() {
                 <p className="text-sm text-gray-600">
                   Importe dados de treino e frequência cardíaca dos dispositivos Polar
                 </p>
-                {polarConectado && (
+                {getIntegrationStatus('POLAR') && getIntegrationLastSync('POLAR') && (
                   <p className="text-xs text-gray-500 mt-2">
-                    Última sincronização: há 5 horas
+                    Última sincronização: {getIntegrationLastSync('POLAR')}
                   </p>
                 )}
               </div>
             </div>
             <Button
-              onClick={handleConectarPolar}
-              variant={polarConectado ? 'outline' : 'default'}
-              className={polarConectado ? 'text-red-600 hover:text-red-700 hover:bg-red-50' : 'bg-red-600 hover:bg-red-700'}
+              onClick={() => handleToggleIntegration('POLAR')}
+              variant={getIntegrationStatus('POLAR') ? 'outline' : 'default'}
+              className={getIntegrationStatus('POLAR') ? 'text-red-600 hover:text-red-700 hover:bg-red-50' : 'bg-red-600 hover:bg-red-700'}
+              disabled={isLoadingIntegrations}
             >
-              {polarConectado ? (
+              {getIntegrationStatus('POLAR') ? (
                 <>
                   <X className="w-4 h-4 mr-2" />
                   Desconectar
@@ -338,7 +447,7 @@ export function Configuracoes() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="font-medium text-gray-900">Garmin</h3>
-                  {garminConectado && (
+                  {getIntegrationStatus('GARMIN') && (
                     <Badge className="bg-green-100 text-green-700 border-green-300">
                       <Check className="w-3 h-3 mr-1" />
                       Conectado
@@ -348,19 +457,20 @@ export function Configuracoes() {
                 <p className="text-sm text-gray-600">
                   Conecte com Garmin Connect para sincronizar atividades e métricas
                 </p>
-                {garminConectado && (
+                {getIntegrationStatus('GARMIN') && getIntegrationLastSync('GARMIN') && (
                   <p className="text-xs text-gray-500 mt-2">
-                    Última sincronização: há 1 hora
+                    Última sincronização: {getIntegrationLastSync('GARMIN')}
                   </p>
                 )}
               </div>
             </div>
             <Button
-              onClick={handleConectarGarmin}
-              variant={garminConectado ? 'outline' : 'default'}
-              className={garminConectado ? 'text-red-600 hover:text-red-700 hover:bg-red-50' : 'bg-blue-600 hover:bg-blue-700'}
+              onClick={() => handleToggleIntegration('GARMIN')}
+              variant={getIntegrationStatus('GARMIN') ? 'outline' : 'default'}
+              className={getIntegrationStatus('GARMIN') ? 'text-red-600 hover:text-red-700 hover:bg-red-50' : 'bg-blue-600 hover:bg-blue-700'}
+              disabled={isLoadingIntegrations}
             >
-              {garminConectado ? (
+              {getIntegrationStatus('GARMIN') ? (
                 <>
                   <X className="w-4 h-4 mr-2" />
                   Desconectar
@@ -486,9 +596,13 @@ export function Configuracoes() {
           <Separator />
 
           <div className="flex justify-end">
-            <Button onClick={handleSalvarPreferencias} className="bg-blue-600 hover:bg-blue-700">
+            <Button
+              onClick={handleSalvarPreferencias}
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={isSavingPreferences || isLoadingPreferences}
+            >
               <Save className="w-4 h-4 mr-2" />
-              Salvar Preferências
+              {isSavingPreferences ? 'Salvando...' : 'Salvar Preferências'}
             </Button>
           </div>
         </CardContent>

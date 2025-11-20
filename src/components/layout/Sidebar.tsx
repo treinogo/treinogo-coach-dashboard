@@ -10,6 +10,7 @@ import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { professorLogado } from '../../lib/mockData';
 import { toast } from 'sonner';
+import { api } from '../../lib/api';
 
 interface SidebarProps {
   currentPage: string;
@@ -23,7 +24,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const [categoria, setCategoria] = useState('');
   const [mensagem, setMensagem] = useState('');
 
-  const handleEnviarFeedback = () => {
+  const handleEnviarFeedback = async () => {
     if (rating === 0) {
       toast.error('Avaliação obrigatória', {
         description: 'Por favor, selecione uma avaliação de 1 a 5 estrelas.',
@@ -38,19 +39,24 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       return;
     }
 
-    // Em produção, aqui seria enviado para API
-    console.log('Feedback enviado:', { rating, categoria, mensagem });
+    try {
+      await api.post('/feedback', { rating, categoria, mensagem });
 
-    toast.success('✅ Feedback enviado com sucesso!', {
-      description: 'Obrigado por nos ajudar a melhorar o RunCoach Pro!',
-    });
+      toast.success('✅ Feedback enviado com sucesso!', {
+        description: 'Obrigado por nos ajudar a melhorar o RunCoach Pro!',
+      });
 
-    // Resetar formulário
-    setRating(0);
-    setHoverRating(0);
-    setCategoria('');
-    setMensagem('');
-    setShowFeedbackModal(false);
+      // Resetar formulário
+      setRating(0);
+      setHoverRating(0);
+      setCategoria('');
+      setMensagem('');
+      setShowFeedbackModal(false);
+    } catch (error) {
+      toast.error('Erro ao enviar feedback', {
+        description: error instanceof Error ? error.message : 'Tente novamente mais tarde.',
+      });
+    }
   };
   const location = useLocation();
   
