@@ -22,8 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { ProvasService } from '../../lib/services';
+import { ProvasService, AlunosService } from '../../lib/services';
 import { toast } from 'sonner';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 
 const MESES = [
   { numero: 1, nome: 'Janeiro', abrev: 'JAN' },
@@ -65,25 +66,54 @@ export function Provas() {
   // API States
   const [provas, setProvas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [alunos, setAlunos] = useState<any[]>([]);
   
-  // Load races from API
+  // Registration States
+  const [provaSelecionada, setProvaSelecionada] = useState<string | null>(null);
+  const [showInscricaoDialog, setShowInscricaoDialog] = useState(false);
+  const [alunosSelecionados, setAlunosSelecionados] = useState<string[]>([]);
+  const [distanciaSelecionada, setDistanciaSelecionada] = useState('');
+  const [inscricoes, setInscricoes] = useState<any[]>([]);
+  
+  // Load races and athletes from API
   useEffect(() => {
-    const loadProvas = async () => {
+    const loadData = async () => {
       try {
         setLoading(true);
-        const provasData = await ProvasService.getRaces();
+        const [provasData, alunosData] = await Promise.all([
+          ProvasService.getRaces(),
+          AlunosService.getAthletes()
+        ]);
         setProvas(provasData);
+        setAlunos(alunosData);
       } catch (error) {
-        console.error('Erro ao carregar provas:', error);
-        toast.error('Erro ao carregar provas');
+        console.error('Erro ao carregar dados:', error);
+        toast.error('Erro ao carregar dados');
         setProvas([]);
+        setAlunos([]);
       } finally {
         setLoading(false);
       }
     };
     
-    loadProvas();
+    loadData();
   }, []);
+
+  // Load registrations when a race is selected
+  useEffect(() => {
+    if (provaSelecionada) {
+      const loadInscricoes = async () => {
+        try {
+          const registrations = await ProvasService.getRaceRegistrations(provaSelecionada);
+          setInscricoes(registrations);
+        } catch (error) {
+          console.error('Erro ao carregar inscrições:', error);
+          setInscricoes([]);
+        }
+      };
+      loadInscricoes();
+    }
+  }, [provaSelecionada]);
 
   const handleToggleDistancia = (distancia: string) => {
     setDistanciasSelecionadas(prev =>
@@ -91,6 +121,77 @@ export function Provas() {
         ? prev.filter(d => d !== distancia)
         : [...prev, distancia]
     );
+  };
+
+  const handleAbrirInscricao = (provaId: string) => {
+    setProvaSelecionada(provaId);
+    setShowInscricaoDialog(true);
+    setAlunosSelecionados([]);
+    setDistanciaSelecionada('');
+  };
+
+  const handleToggleAluno = (alunoId: string) => {
+    setAlunosSelecionados(prev =>
+      prev.includes(alunoId)
+        ? prev.filter(id => id !== alunoId)
+        : [...prev, alunoId]
+    );
+  };
+
+  const handleInscreverAlunos = async () => {
+    if (!provaSelecionada || alunosSelecionados.length === 0 || !distanciaSelecionada) {
+      toast.error('Erro ao inscrever alunos', {
+        description: 'Selecione pelo menos um aluno e uma distância',
+      });
+      return;
+    }
+
+    try {
+      const prova = provas.find(p => p.id === provaSelecionada);
+      if (!prova) return;
+
+      // Get athleteIds from selected alunos
+      const athleteIds = alunosSelecionados.map(alunoId => {
+        const aluno = alunos.find(a => a.id === alunoId);
+        return aluno?.athleteId || alunoId;
+      });
+
+      await ProvasService.registerAthletesToRace(provaSelecionada, athleteIds, distanciaSelecionada);
+
+      // Reload registrations
+      const registrations = await ProvasService.getRaceRegistrations(provaSelecionada);
+      setInscricoes(registrations);
+
+      toast.success('✅ Alunos inscritos com sucesso', {
+        description: `${alunosSelecionados.length} aluno(s) inscrito(s) na distância ${distanciaSelecionada}`,
+      });
+
+      setShowInscricaoDialog(false);
+      setAlunosSelecionados([]);
+      setDistanciaSelecionada('');
+    } catch (error: any) {
+      console.error('Erro ao inscrever alunos:', error);
+      toast.error('❌ Erro ao inscrever alunos', {
+        description: error.message || 'Tente novamente.',
+      });
+    }
+  };
+
+  const handleRemoverInscricao = async (registrationId: string) => {
+    if (!provaSelecionada) return;
+
+    try {
+      await ProvasService.removeRaceRegistration(provaSelecionada, registrationId);
+      
+      // Reload registrations
+      const registrations = await ProvasService.getRaceRegistrations(provaSelecionada);
+      setInscricoes(registrations);
+
+      toast.success('Inscrição removida com sucesso');
+    } catch (error) {
+      console.error('Erro ao remover inscrição:', error);
+      toast.error('Erro ao remover inscrição');
+    }
   };
 
   const handleSalvarProva = async () => {
@@ -362,11 +463,52 @@ export function Provas() {
                               </div>
                             </div>
 
-                            <div className="pt-3 border-t border-gray-200">
-                              <Button variant="outline" size="sm" className="w-full">
+                            <div className="pt-3 border-t border-gray-200 space-y-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="w-full"
+                                onClick={() => handleAbrirInscricao(prova.id)}
+                              >
                                 <Users className="w-4 h-4 mr-2" />
                                 Inscrever Alunos
                               </Button>
+                              
+                              {/* Lista de inscritos */}
+                              {(() => {
+                                const provaInscricoes = inscricoes.filter(reg => reg.raceId === prova.id);
+                                if (provaInscricoes.length === 0) return null;
+                                
+                                return (
+                                  <div className="mt-2 space-y-1">
+                                    <p className="text-xs text-gray-600 font-medium">Inscritos ({provaInscricoes.length}):</p>
+                                    <div className="max-h-32 overflow-y-auto space-y-1">
+                                      {provaInscricoes.map(reg => (
+                                        <div key={reg.id} className="flex items-center justify-between p-1.5 bg-gray-50 rounded text-xs">
+                                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                                            <Avatar className="w-5 h-5">
+                                              <AvatarImage src={reg.aluno.foto} alt={reg.aluno.nome} />
+                                              <AvatarFallback>{reg.aluno.nome.charAt(0)}</AvatarFallback>
+                                            </Avatar>
+                                            <span className="text-gray-900 truncate">{reg.aluno.nome}</span>
+                                            <Badge variant="outline" className="text-xs">{reg.distance}</Badge>
+                                          </div>
+                                          {provaSelecionada === prova.id && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-5 w-5 p-0 text-gray-400 hover:text-red-600"
+                                              onClick={() => handleRemoverInscricao(reg.id)}
+                                            >
+                                              ×
+                                            </Button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </CardContent>
                         </Card>
@@ -574,6 +716,124 @@ export function Provas() {
             </Button>
             <Button onClick={handleSalvarProva} className="bg-orange-600 hover:bg-orange-700">
               Cadastrar Prova
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Inscrever Alunos */}
+      <Dialog open={showInscricaoDialog} onOpenChange={setShowInscricaoDialog}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Inscrever Alunos na Prova</DialogTitle>
+            <DialogDescription>
+              {provaSelecionada && provas.find(p => p.id === provaSelecionada)?.nome}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Seleção de Distância */}
+            <div className="space-y-2">
+              <Label>
+                Distância <span className="text-red-500">*</span>
+              </Label>
+              <Select value={distanciaSelecionada} onValueChange={setDistanciaSelecionada}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a distância" />
+                </SelectTrigger>
+                <SelectContent>
+                  {provaSelecionada && provas.find(p => p.id === provaSelecionada)?.distancias.map((dist: string) => (
+                    <SelectItem key={dist} value={dist}>
+                      {dist}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Lista de Alunos */}
+            <div className="space-y-2">
+              <Label>Selecione os Alunos</Label>
+              <div className="border rounded-lg max-h-60 overflow-y-auto p-2 space-y-2">
+                {alunos.filter(a => a.status === 'Ativo').map(aluno => (
+                  <div key={aluno.id} className="flex items-center space-x-3 p-2 rounded hover:bg-gray-50">
+                    <Checkbox 
+                      id={`aluno-inscricao-${aluno.id}`}
+                      checked={alunosSelecionados.includes(aluno.id)}
+                      onCheckedChange={() => handleToggleAluno(aluno.id)}
+                    />
+                    <Label 
+                      htmlFor={`aluno-inscricao-${aluno.id}`} 
+                      className="flex items-center gap-3 flex-1 cursor-pointer"
+                    >
+                      <Avatar className="w-8 h-8">
+                        <AvatarImage src={aluno.foto} alt={aluno.nome} />
+                        <AvatarFallback>{aluno.nome.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm text-gray-900">{aluno.nome}</p>
+                        <p className="text-xs text-gray-500">{aluno.nivel}</p>
+                      </div>
+                    </Label>
+                  </div>
+                ))}
+                
+                {alunos.filter(a => a.status === 'Ativo').length === 0 && (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-500">Nenhum aluno ativo encontrado</p>
+                  </div>
+                )}
+              </div>
+
+              {alunosSelecionados.length > 0 && (
+                <div className="p-2 bg-blue-50 border border-blue-200 rounded">
+                  <p className="text-xs text-blue-900">
+                    {alunosSelecionados.length} aluno(s) selecionado(s)
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Inscrições Existentes */}
+            {inscricoes.length > 0 && (
+              <div className="space-y-2 border-t pt-4">
+                <Label>Alunos Já Inscritos ({inscricoes.length})</Label>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {inscricoes.map(reg => (
+                    <div key={reg.id} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="w-6 h-6">
+                          <AvatarImage src={reg.aluno.foto} alt={reg.aluno.nome} />
+                          <AvatarFallback>{reg.aluno.nome.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-gray-900">{reg.aluno.nome}</span>
+                        <Badge variant="outline">{reg.distance}</Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
+                        onClick={() => handleRemoverInscricao(reg.id)}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInscricaoDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleInscreverAlunos} 
+              className="bg-orange-600 hover:bg-orange-700"
+              disabled={alunosSelecionados.length === 0 || !distanciaSelecionada}
+            >
+              Inscrever
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -460,6 +460,50 @@ export class ProvasService {
     return api.get(`/races/search?q=${encodeURIComponent(query)}`);
   }
 
+  static async getRaceRegistrations(raceId: string) {
+    try {
+      const response = await api.get(`/races/${raceId}/registrations`);
+      return response.registrations.map((reg: any) => ({
+        id: reg.id,
+        raceId: reg.raceId,
+        athleteId: reg.athleteId,
+        distance: reg.distance,
+        aluno: {
+          id: reg.athlete.user.id,
+          nome: reg.athlete.user.name,
+          email: reg.athlete.user.email,
+          foto: reg.athlete.user.avatar
+        },
+        createdAt: new Date(reg.createdAt)
+      }));
+    } catch (error) {
+      console.error('Error fetching race registrations:', error);
+      throw error;
+    }
+  }
+
+  static async registerAthletesToRace(raceId: string, athleteIds: string[], distance: string) {
+    try {
+      const response = await api.post(`/races/${raceId}/registrations`, {
+        athleteIds,
+        distance
+      });
+      return response.registrations;
+    } catch (error) {
+      console.error('Error registering athletes to race:', error);
+      throw error;
+    }
+  }
+
+  static async removeRaceRegistration(raceId: string, registrationId: string) {
+    try {
+      return api.delete(`/races/${raceId}/registrations/${registrationId}`);
+    } catch (error) {
+      console.error('Error removing race registration:', error);
+      throw error;
+    }
+  }
+
   private static mapTimeOfDay(timeOfDay?: string): 'Manhã' | 'Tarde' | 'Noite' | undefined {
     if (!timeOfDay) return undefined;
     const mapping = {
