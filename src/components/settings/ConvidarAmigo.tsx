@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Gift, Copy, Check, Mail, MessageCircle, Edit, Trash2, Share2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Gift, Copy, Check, Mail, MessageCircle, Trash2, Share2, Plus, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -22,61 +22,69 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../ui/alert-dialog';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { ReferralService } from '../../lib/services';
+
+interface Referral {
+  id: string;
+  email: string;
+  status: 'SENT' | 'REGISTERED' | 'REWARDED';
+  discount: number;
+  sentAt: string;
+  registeredAt: string | null;
+}
+
+interface Stats {
+  totalConvites: number;
+  recompensasRecebidas: number;
+  descontoAcumulado: number;
+}
 
 export function ConvidarAmigo() {
   const [linkCopiado, setLinkCopiado] = useState(false);
   const [conviteParaExcluir, setConviteParaExcluir] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [linkAfiliado, setLinkAfiliado] = useState('');
+  const [codigoAfiliado, setCodigoAfiliado] = useState('');
+  const [convites, setConvites] = useState<Referral[]>([]);
+  const [stats, setStats] = useState<Stats>({ totalConvites: 0, recompensasRecebidas: 0, descontoAcumulado: 0 });
+  const [novoEmail, setNovoEmail] = useState('');
+  const [criandoConvite, setCriandoConvite] = useState(false);
 
-  // Link de afiliado do usuário
-  const linkAfiliado = 'https://runcoachpro.com/ref/CARLOS2024';
-  const codigoAfiliado = 'CARLOS2024';
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  // Mock de convites enviados
-  const convites = [
-    {
-      id: '1',
-      email: 'joao.silva@email.com',
-      status: 'Recompensa recebida',
-      dataEnvio: '15/10/2024',
-      dataCadastro: '18/10/2024',
-      desconto: '10%',
-    },
-    {
-      id: '2',
-      email: 'maria.santos@email.com',
-      status: 'Aguardando',
-      dataEnvio: '20/10/2024',
-      dataCadastro: '22/10/2024',
-      desconto: '-',
-    },
-    {
-      id: '3',
-      email: 'pedro.costa@email.com',
-      status: 'Enviado',
-      dataEnvio: '01/11/2024',
-      dataCadastro: '-',
-      desconto: '-',
-    },
-    {
-      id: '4',
-      email: 'ana.oliveira@email.com',
-      status: 'Recompensa recebida',
-      dataEnvio: '05/10/2024',
-      dataCadastro: '07/10/2024',
-      desconto: '10%',
-    },
-  ];
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [codeData, referrals, statsData] = await Promise.all([
+        ReferralService.getMyCode(),
+        ReferralService.getReferrals(),
+        ReferralService.getStats()
+      ]);
+
+      setCodigoAfiliado(codeData.code);
+      setLinkAfiliado(codeData.link);
+      setConvites(referrals);
+      setStats(statsData);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      toast.error('Erro ao carregar dados de indicações');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleCopiarLink = async () => {
     try {
       await navigator.clipboard.writeText(linkAfiliado);
       setLinkCopiado(true);
-      toast.success('✅ Link copiado!', {
+      toast.success('Link copiado!', {
         description: 'O link de afiliado foi copiado para a área de transferência.',
       });
       setTimeout(() => setLinkCopiado(false), 3000);
-    } catch (err) {
+    } catch {
       toast.error('Erro ao copiar link', {
         description: 'Tente novamente ou copie manualmente.',
       });
@@ -84,8 +92,8 @@ export function ConvidarAmigo() {
   };
 
   const handleCompartilharEmail = () => {
-    const assunto = 'Conheça o RunCoach Pro - Gestão de Treinos';
-    const corpo = `Olá!\n\nConheça o RunCoach Pro, uma plataforma incrível para gestão de treinos de corrida.\n\nUse meu link de convite: ${linkAfiliado}\n\nAbraços!`;
+    const assunto = 'Conheça o TreinoGO - Gestão de Treinos';
+    const corpo = `Olá!\n\nConheça o TreinoGO, uma plataforma incrível para gestão de treinos de corrida.\n\nUse meu link de convite: ${linkAfiliado}\n\nAbraços!`;
     window.location.href = `mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
     toast.success('Email aberto!', {
       description: 'Seu cliente de email foi aberto com o convite.',
@@ -93,37 +101,71 @@ export function ConvidarAmigo() {
   };
 
   const handleCompartilharWhatsApp = () => {
-    const mensagem = `Olá! Conheça o RunCoach Pro, uma plataforma incrível para gestão de treinos de corrida.\n\nUse meu link de convite: ${linkAfiliado}`;
+    const mensagem = `Olá! Conheça o TreinoGO, uma plataforma incrível para gestão de treinos de corrida.\n\nUse meu link de convite: ${linkAfiliado}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(mensagem)}`, '_blank');
   };
 
-  const handleEditar = (id: string) => {
-    console.log('Editar convite:', id);
-    toast.info('Funcionalidade em desenvolvimento');
+  const handleCriarConvite = async () => {
+    if (!novoEmail.trim()) {
+      toast.error('Digite um email válido');
+      return;
+    }
+
+    try {
+      setCriandoConvite(true);
+      await ReferralService.createReferral(novoEmail.trim());
+      toast.success('Convite criado!', {
+        description: 'O convite foi registrado com sucesso.',
+      });
+      setNovoEmail('');
+      loadData();
+    } catch (error: any) {
+      toast.error('Erro ao criar convite', {
+        description: error?.message || 'Tente novamente.',
+      });
+    } finally {
+      setCriandoConvite(false);
+    }
   };
 
-  const handleExcluir = (id: string) => {
-    console.log('Excluir convite:', id);
-    toast.success('Convite excluído', {
-      description: 'O convite foi removido da sua lista.',
-    });
-    setConviteParaExcluir(null);
+  const handleExcluir = async (id: string) => {
+    try {
+      await ReferralService.deleteReferral(id);
+      toast.success('Convite excluído', {
+        description: 'O convite foi removido da sua lista.',
+      });
+      setConviteParaExcluir(null);
+      loadData();
+    } catch {
+      toast.error('Erro ao excluir convite');
+    }
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'Recompensa recebida':
-        return <Badge className="bg-green-100 text-green-700 border-green-300">✓ Recompensa recebida</Badge>;
-      case 'Aguardando':
-        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-300">⏳ Aguardando</Badge>;
-      case 'Enviado':
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-300">📧 Enviado</Badge>;
+      case 'REWARDED':
+        return <Badge className="bg-green-100 text-green-700 border-green-300">Recompensa recebida</Badge>;
+      case 'REGISTERED':
+        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-300">Cadastrado</Badge>;
+      case 'SENT':
+        return <Badge className="bg-blue-100 text-blue-700 border-blue-300">Enviado</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
-  const totalDescontos = convites.filter(c => c.status === 'Recompensa recebida').length * 10;
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('pt-BR');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -148,7 +190,7 @@ export function ConvidarAmigo() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-orange-700">Total de Convites</p>
-                <p className="text-3xl text-orange-900 mt-1">{convites.length}</p>
+                <p className="text-3xl text-orange-900 mt-1">{stats.totalConvites}</p>
               </div>
               <Share2 className="w-8 h-8 text-orange-600" />
             </div>
@@ -160,9 +202,7 @@ export function ConvidarAmigo() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-green-700">Recompensas Recebidas</p>
-                <p className="text-3xl text-green-900 mt-1">
-                  {convites.filter(c => c.status === 'Recompensa recebida').length}
-                </p>
+                <p className="text-3xl text-green-900 mt-1">{stats.recompensasRecebidas}</p>
               </div>
               <Gift className="w-8 h-8 text-green-600" />
             </div>
@@ -174,7 +214,7 @@ export function ConvidarAmigo() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-blue-700">Desconto Acumulado</p>
-                <p className="text-3xl text-blue-900 mt-1">{totalDescontos}%</p>
+                <p className="text-3xl text-blue-900 mt-1">{stats.descontoAcumulado}%</p>
               </div>
               <div className="text-2xl">💰</div>
             </div>
@@ -256,6 +296,40 @@ export function ConvidarAmigo() {
         </CardContent>
       </Card>
 
+      {/* Registrar Convite */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Registrar Convite</CardTitle>
+          <CardDescription>
+            Registre um email para acompanhar o convite
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Input
+              placeholder="email@exemplo.com"
+              value={novoEmail}
+              onChange={(e) => setNovoEmail(e.target.value)}
+              className="flex-1"
+            />
+            <Button
+              onClick={handleCriarConvite}
+              disabled={criandoConvite}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {criandoConvite ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Adicionar
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Tabela de Convites */}
       <Card>
         <CardHeader>
@@ -266,40 +340,37 @@ export function ConvidarAmigo() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>E-mail</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Data de Envio</TableHead>
-                  <TableHead>Data de Cadastro</TableHead>
-                  <TableHead>Desconto</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {convites.map((convite) => (
-                  <TableRow key={convite.id}>
-                    <TableCell className="font-medium">{convite.email}</TableCell>
-                    <TableCell>{getStatusBadge(convite.status)}</TableCell>
-                    <TableCell>{convite.dataEnvio}</TableCell>
-                    <TableCell>{convite.dataCadastro}</TableCell>
-                    <TableCell>
-                      {convite.desconto !== '-' ? (
-                        <span className="text-green-700 font-medium">{convite.desconto}</span>
-                      ) : (
-                        <span className="text-gray-400">{convite.desconto}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditar(convite.id)}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
+            {convites.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">
+                Nenhum convite registrado ainda. Comece convidando seus amigos!
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>E-mail</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Data de Envio</TableHead>
+                    <TableHead>Data de Cadastro</TableHead>
+                    <TableHead>Desconto</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {convites.map((convite) => (
+                    <TableRow key={convite.id}>
+                      <TableCell className="font-medium">{convite.email}</TableCell>
+                      <TableCell>{getStatusBadge(convite.status)}</TableCell>
+                      <TableCell>{formatDate(convite.sentAt)}</TableCell>
+                      <TableCell>{formatDate(convite.registeredAt)}</TableCell>
+                      <TableCell>
+                        {convite.discount > 0 ? (
+                          <span className="text-green-700 font-medium">{convite.discount}%</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -308,12 +379,12 @@ export function ConvidarAmigo() {
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -322,7 +393,7 @@ export function ConvidarAmigo() {
       <Card className="bg-blue-50 border-blue-200">
         <CardContent className="pt-6">
           <p className="text-sm text-blue-900">
-            <span className="font-medium">ℹ️ Como funciona:</span> Quando seu amigo se cadastrar
+            <span className="font-medium">Como funciona:</span> Quando seu amigo se cadastrar
             usando seu link e realizar uma assinatura paga, você receberá 10% de desconto na
             próxima mensalidade. Os descontos são acumulativos até 100%.
           </p>

@@ -600,6 +600,59 @@ export class NotificationsService {
   }
 }
 
+// Referral Services
+export class ReferralService {
+  static async getMyCode() {
+    try {
+      const response = await api.get('/referrals/my-code');
+      return response;
+    } catch (error) {
+      console.error('Error fetching referral code:', error);
+      throw error;
+    }
+  }
+
+  static async getReferrals() {
+    try {
+      const response = await api.get('/referrals');
+      return response.referrals || [];
+    } catch (error) {
+      console.error('Error fetching referrals:', error);
+      throw error;
+    }
+  }
+
+  static async getStats() {
+    try {
+      const response = await api.get('/referrals/stats');
+      return response;
+    } catch (error) {
+      console.error('Error fetching referral stats:', error);
+      throw error;
+    }
+  }
+
+  static async createReferral(email: string) {
+    try {
+      const response = await api.post('/referrals', { email });
+      return response.referral;
+    } catch (error) {
+      console.error('Error creating referral:', error);
+      throw error;
+    }
+  }
+
+  static async deleteReferral(id: string) {
+    try {
+      await api.delete(`/referrals/${id}`);
+      return true;
+    } catch (error) {
+      console.error('Error deleting referral:', error);
+      throw error;
+    }
+  }
+}
+
 // User Profile Services
 export class UserService {
   static async getProfile() {
