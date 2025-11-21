@@ -368,22 +368,31 @@ export class DesafiosService {
 // Physical Tests Services
 export class TestesService {
   static async getTests() {
-    return api.get('/physical-tests');
+    const response = await api.get('/physical-tests');
+    return {
+      tests: (response.tests || []).map((test: any) => this.mapTestFromBackend(test))
+    };
   }
 
   static async getAthleteTests(athleteId: string) {
-    return api.get(`/physical-tests/athlete/${athleteId}`);
+    const response = await api.get(`/physical-tests/athlete/${athleteId}`);
+    return {
+      tests: (response.tests || []).map((test: any) => this.mapTestFromBackend(test))
+    };
   }
 
   static async createTest(testData: any) {
-    return api.post('/physical-tests', {
+    const response = await api.post('/physical-tests', {
       athleteId: testData.alunoId,
-      testType: this.mapTestType(testData.tipoTeste),
+      testType: this.mapTestTypeToBackend(testData.tipoTeste),
       pace: testData.pace,
       finalTime: testData.tempoFinal,
       distance: testData.distancia,
       testDate: testData.data
     });
+    return {
+      test: this.mapTestFromBackend(response.test)
+    };
   }
 
   static async updateTest(id: string, testData: any) {
@@ -406,13 +415,34 @@ export class TestesService {
     }
   }
 
-  private static mapTestType(tipoTeste: string): string {
-    const mapping = {
+  private static mapTestFromBackend(test: any) {
+    return {
+      id: test.id,
+      alunoId: test.athleteId,
+      tipoTeste: this.mapTestTypeFromBackend(test.testType),
+      pace: test.pace,
+      tempoFinal: test.finalTime,
+      distancia: test.distance,
+      data: new Date(test.testDate)
+    };
+  }
+
+  private static mapTestTypeToBackend(tipoTeste: string): string {
+    const mapping: Record<string, string> = {
       '12 minutos': 'TWELVE_MINUTES',
-      '3km': 'THREE_KM', 
+      '3km': 'THREE_KM',
       '5km': 'FIVE_KM'
     };
-    return mapping[tipoTeste as keyof typeof mapping] || tipoTeste;
+    return mapping[tipoTeste] || tipoTeste;
+  }
+
+  private static mapTestTypeFromBackend(testType: string): '12 minutos' | '3km' | '5km' {
+    const mapping: Record<string, '12 minutos' | '3km' | '5km'> = {
+      'TWELVE_MINUTES': '12 minutos',
+      'THREE_KM': '3km',
+      'FIVE_KM': '5km'
+    };
+    return mapping[testType] || '5km';
   }
 }
 
