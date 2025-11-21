@@ -60,8 +60,8 @@ export function Provas() {
   const [dataProva, setDataProva] = useState('');
   const [turnoProva, setTurnoProva] = useState('Manhã');
   const [linkProva, setLinkProva] = useState('');
-  const [anoFiltro, setAnoFiltro] = useState('2024');
-  const [mesSelecionado, setMesSelecionado] = useState('11');
+  const [anoFiltro, setAnoFiltro] = useState(new Date().getFullYear().toString());
+  const [mesSelecionado, setMesSelecionado] = useState((new Date().getMonth() + 1).toString());
   
   // API States
   const [provas, setProvas] = useState<any[]>([]);
@@ -86,6 +86,39 @@ export function Provas() {
         ]);
         setProvas(provasData);
         setAlunos(alunosData);
+
+        // Load all registrations for all races
+        const allRegistrations: any[] = [];
+        for (const prova of provasData) {
+          try {
+            const registrations = await ProvasService.getRaceRegistrations(prova.id);
+            if (registrations && Array.isArray(registrations)) {
+              console.log(`Carregadas ${registrations.length} inscrições para prova ${prova.id}:`, registrations.map(r => ({
+                id: r.id,
+                raceId: r.raceId,
+                athleteId: r.athleteId,
+                alunoId: r.aluno.id,
+                distance: r.distance
+              })));
+              allRegistrations.push(...registrations);
+            }
+          } catch (error: any) {
+            // Only log if it's not a 404 (race might not have registrations yet)
+            if (error?.message && !error.message.includes('404') && !error.message.includes('not found')) {
+              console.error(`Erro ao carregar inscrições da prova ${prova.id}:`, error);
+            }
+          }
+        }
+        console.log('Total de inscrições carregadas:', allRegistrations.length);
+        console.log('Detalhes das inscrições:', allRegistrations.map(r => ({
+          id: r.id,
+          raceId: r.raceId,
+          athleteId: r.athleteId,
+          alunoId: r.aluno.id,
+          alunoNome: r.aluno.nome,
+          distance: r.distance
+        })));
+        setInscricoes(allRegistrations);
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
         toast.error('Erro ao carregar dados');
@@ -99,21 +132,27 @@ export function Provas() {
     loadData();
   }, []);
 
-  // Load registrations when a race is selected
+  // Load registrations when a race is selected (for dialog)
   useEffect(() => {
-    if (provaSelecionada) {
+    if (provaSelecionada && showInscricaoDialog) {
       const loadInscricoes = async () => {
         try {
           const registrations = await ProvasService.getRaceRegistrations(provaSelecionada);
-          setInscricoes(registrations);
+          console.log(`Carregando inscrições para dialog - prova ${provaSelecionada}:`, registrations);
+          setInscricoes(prev => {
+            // Remove old registrations for this race and add new ones
+            const filtered = prev.filter(reg => reg.raceId !== provaSelecionada);
+            const merged = [...filtered, ...registrations];
+            console.log(`Inscrições atualizadas no estado:`, merged);
+            return merged;
+          });
         } catch (error) {
           console.error('Erro ao carregar inscrições:', error);
-          setInscricoes([]);
         }
       };
       loadInscricoes();
     }
-  }, [provaSelecionada]);
+  }, [provaSelecionada, showInscricaoDialog]);
 
   const handleToggleDistancia = (distancia: string) => {
     setDistanciasSelecionadas(prev =>
@@ -124,6 +163,8 @@ export function Provas() {
   };
 
   const handleAbrirInscricao = (provaId: string) => {
+    console.log('Abrindo dialog de inscrição para prova:', provaId);
+    console.log('Inscrições atuais no estado:', inscricoes.filter(reg => reg.raceId === provaId));
     setProvaSelecionada(provaId);
     setShowInscricaoDialog(true);
     setAlunosSelecionados([]);
@@ -153,18 +194,56 @@ export function Provas() {
       // Get athleteIds from selected alunos
       const athleteIds = alunosSelecionados.map(alunoId => {
         const aluno = alunos.find(a => a.id === alunoId);
-        return aluno?.athleteId || alunoId;
+        const athleteId = aluno?.athleteId || alunoId;
+        console.log(`🎯 Mapeando para inscrição - Aluno ${alunoId} -> athleteId: ${athleteId}`, aluno);
+        return athleteId;
       });
 
-      await ProvasService.registerAthletesToRace(provaSelecionada, athleteIds, distanciaSelecionada);
+      console.log('📝 Enviando inscrição ao backend:');
+      console.log('   Prova:', provaSelecionada);
+      console.log('   AthleteIds:', athleteIds);
+      console.log('   Distância:', distanciaSelecionada);
+      const response = await ProvasService.registerAthletesToRace(provaSelecionada, athleteIds, distanciaSelecionada);
+      console.log('✅ Response do backend:', response);
 
-      // Reload registrations
+      // Reload registrations for this race and update state
       const registrations = await ProvasService.getRaceRegistrations(provaSelecionada);
-      setInscricoes(registrations);
-
-      toast.success('✅ Alunos inscritos com sucesso', {
-        description: `${alunosSelecionados.length} aluno(s) inscrito(s) na distância ${distanciaSelecionada}`,
+      console.log('Inscrições recarregadas após tentativa:', registrations);
+      setInscricoes(prev => {
+        // Remove old registrations for this race and add new ones
+        const filtered = prev.filter(reg => reg.raceId !== provaSelecionada);
+        const updated = [...filtered, ...registrations];
+        console.log('Estado de inscrições atualizado:', updated);
+        return updated;
       });
+
+      const inscritosCount = response.registrations?.length || 0;
+      const jaInscritos = response.skipped?.length || 0;
+      const totalSelecionados = alunosSelecionados.length;
+      
+      console.log('Resultado inscrição:', { inscritosCount, jaInscritos, totalSelecionados, response });
+      
+      if (inscritosCount === 0 && jaInscritos === totalSelecionados) {
+        // Todos já estavam inscritos
+        toast.warning('Alunos já inscritos', {
+          description: `Todos os ${totalSelecionados} aluno(s) selecionado(s) já estão inscritos na distância ${distanciaSelecionada}.`,
+        });
+      } else if (jaInscritos > 0) {
+        // Alguns já estavam inscritos
+        toast.warning('Alguns alunos já estavam inscritos', {
+          description: `${inscritosCount} aluno(s) inscrito(s) com sucesso. ${jaInscritos} já estava(m) inscrito(s) nesta distância.`,
+        });
+      } else if (inscritosCount > 0) {
+        // Todos foram inscritos com sucesso
+        toast.success('✅ Alunos inscritos com sucesso', {
+          description: `${inscritosCount} aluno(s) inscrito(s) na distância ${distanciaSelecionada}`,
+        });
+      } else {
+        // Caso inesperado
+        toast.error('Erro ao inscrever alunos', {
+          description: 'Nenhum aluno foi inscrito. Verifique os dados e tente novamente.',
+        });
+      }
 
       setShowInscricaoDialog(false);
       setAlunosSelecionados([]);
@@ -183,9 +262,8 @@ export function Provas() {
     try {
       await ProvasService.removeRaceRegistration(provaSelecionada, registrationId);
       
-      // Reload registrations
-      const registrations = await ProvasService.getRaceRegistrations(provaSelecionada);
-      setInscricoes(registrations);
+      // Remove from state
+      setInscricoes(prev => prev.filter(reg => reg.id !== registrationId));
 
       toast.success('Inscrição removida com sucesso');
     } catch (error) {
@@ -368,9 +446,19 @@ export function Provas() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="2024">2024</SelectItem>
-                <SelectItem value="2025">2025</SelectItem>
-                <SelectItem value="2026">2026</SelectItem>
+                {(() => {
+                  const currentYear = new Date().getFullYear();
+                  const years = [];
+                  // Include current year and next 2 years
+                  for (let i = 0; i < 3; i++) {
+                    years.push(currentYear + i);
+                  }
+                  return years.map(year => (
+                    <SelectItem key={year} value={year.toString()}>
+                      {year}
+                    </SelectItem>
+                  ));
+                })()}
               </SelectContent>
             </Select>
           </div>
@@ -476,8 +564,8 @@ export function Provas() {
                               
                               {/* Lista de inscritos */}
                               {(() => {
-                                const provaInscricoes = inscricoes.filter(reg => reg.raceId === prova.id);
-                                if (provaInscricoes.length === 0) return null;
+                                const provaInscricoes = inscricoes.filter(reg => reg && reg.raceId === prova.id);
+                                if (!provaInscricoes || provaInscricoes.length === 0) return null;
                                 
                                 return (
                                   <div className="mt-2 space-y-1">
@@ -737,7 +825,14 @@ export function Provas() {
               <Label>
                 Distância <span className="text-red-500">*</span>
               </Label>
-              <Select value={distanciaSelecionada} onValueChange={setDistanciaSelecionada}>
+              <Select 
+                value={distanciaSelecionada} 
+                onValueChange={(value) => {
+                  console.log('Distância selecionada:', value);
+                  console.log('Inscrições atuais no estado:', inscricoes.filter(reg => reg.raceId === provaSelecionada));
+                  setDistanciaSelecionada(value);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a distância" />
                 </SelectTrigger>
@@ -755,28 +850,76 @@ export function Provas() {
             <div className="space-y-2">
               <Label>Selecione os Alunos</Label>
               <div className="border rounded-lg max-h-60 overflow-y-auto p-2 space-y-2">
-                {alunos.filter(a => a.status === 'Ativo').map(aluno => (
-                  <div key={aluno.id} className="flex items-center space-x-3 p-2 rounded hover:bg-gray-50">
-                    <Checkbox 
-                      id={`aluno-inscricao-${aluno.id}`}
-                      checked={alunosSelecionados.includes(aluno.id)}
-                      onCheckedChange={() => handleToggleAluno(aluno.id)}
-                    />
-                    <Label 
-                      htmlFor={`aluno-inscricao-${aluno.id}`} 
-                      className="flex items-center gap-3 flex-1 cursor-pointer"
-                    >
-                      <Avatar className="w-8 h-8">
-                        <AvatarImage src={aluno.foto} alt={aluno.nome} />
-                        <AvatarFallback>{aluno.nome.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="text-sm text-gray-900">{aluno.nome}</p>
-                        <p className="text-xs text-gray-500">{aluno.nivel}</p>
-                      </div>
-                    </Label>
-                  </div>
-                ))}
+                {alunos.filter(a => a.status === 'Ativo').map(aluno => {
+                  // Check if student is already registered for selected distance
+                  // Compare athleteId only (this is the correct field)
+                  const inscricoesDoAluno = inscricoes.filter(
+                    reg => reg.raceId === provaSelecionada &&
+                           reg.athleteId === aluno.athleteId
+                  );
+
+                  const jaInscritoNestaDistancia = distanciaSelecionada && inscricoesDoAluno.some(
+                    reg => reg.distance === distanciaSelecionada
+                  );
+
+                  // Get all distances this student is registered for in this race
+                  const distanciasInscrito = inscricoesDoAluno.map(reg => reg.distance);
+
+                  // Debug log
+                  if (provaSelecionada && distanciaSelecionada) {
+                    console.log(`🔍 Aluno ${aluno.nome}:`);
+                    console.log(`   aluno.id (userId): ${aluno.id}`);
+                    console.log(`   aluno.athleteId: ${aluno.athleteId}`);
+                    console.log(`   Distância selecionada: "${distanciaSelecionada}"`);
+                    console.log(`   Inscrições encontradas (${inscricoesDoAluno.length}):`, inscricoesDoAluno.map(i => ({
+                      id: i.id,
+                      athleteId: i.athleteId,
+                      distance: i.distance,
+                      match: i.athleteId === aluno.athleteId
+                    })));
+                    console.log(`   Já inscrito nesta distância "${distanciaSelecionada}":`, jaInscritoNestaDistancia);
+                    console.log(`   Distâncias inscrito:`, distanciasInscrito);
+                  }
+
+                  return (
+                    <div key={aluno.id} className={`flex items-center space-x-3 p-2 rounded hover:bg-gray-50 ${jaInscritoNestaDistancia ? 'opacity-60' : ''}`}>
+                      <Checkbox 
+                        id={`aluno-inscricao-${aluno.id}`}
+                        checked={alunosSelecionados.includes(aluno.id)}
+                        onCheckedChange={() => handleToggleAluno(aluno.id)}
+                        disabled={jaInscritoNestaDistancia}
+                      />
+                      <Label 
+                        htmlFor={`aluno-inscricao-${aluno.id}`} 
+                        className={`flex items-center gap-3 flex-1 cursor-pointer ${jaInscritoNestaDistancia ? 'cursor-not-allowed' : ''}`}
+                      >
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={aluno.foto} alt={aluno.nome} />
+                          <AvatarFallback>{aluno.nome.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <p className="text-sm text-gray-900">{aluno.nome}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-gray-500">{aluno.nivel}</p>
+                            {distanciasInscrito.length > 0 && (
+                              <>
+                                <span className="text-xs text-gray-400">•</span>
+                                <span className="text-xs text-blue-600">
+                                  Inscrito: {distanciasInscrito.join(', ')}
+                                </span>
+                              </>
+                            )}
+                            {jaInscritoNestaDistancia && (
+                              <Badge variant="outline" className="text-xs ml-1">
+                                Já inscrito nesta distância
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </Label>
+                    </div>
+                  );
+                })}
                 
                 {alunos.filter(a => a.status === 'Ativo').length === 0 && (
                   <div className="text-center py-4">

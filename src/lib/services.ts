@@ -463,22 +463,39 @@ export class ProvasService {
   static async getRaceRegistrations(raceId: string) {
     try {
       const response = await api.get(`/races/${raceId}/registrations`);
-      return response.registrations.map((reg: any) => ({
+      console.log(`API Response for race ${raceId}:`, response);
+      if (!response.registrations || !Array.isArray(response.registrations)) {
+        console.log(`No registrations found for race ${raceId}`);
+        return [];
+      }
+      const mapped = response.registrations.map((reg: any) => ({
         id: reg.id,
         raceId: reg.raceId,
         athleteId: reg.athleteId,
         distance: reg.distance,
         aluno: {
-          id: reg.athlete.user.id,
-          nome: reg.athlete.user.name,
-          email: reg.athlete.user.email,
-          foto: reg.athlete.user.avatar
+          id: reg.athlete?.user?.id || reg.athleteId,
+          nome: reg.athlete?.user?.name || 'Aluno',
+          email: reg.athlete?.user?.email || '',
+          foto: reg.athlete?.user?.avatar || null
         },
         createdAt: new Date(reg.createdAt)
       }));
-    } catch (error) {
+      console.log(`Mapped registrations for race ${raceId}:`, mapped.map(r => ({
+        id: r.id,
+        athleteId: r.athleteId,
+        alunoId: r.aluno.id,
+        alunoNome: r.aluno.nome,
+        distance: r.distance
+      })));
+      return mapped;
+    } catch (error: any) {
+      // Return empty array if race not found or no registrations
+      if (error?.message?.includes('404') || error?.message?.includes('not found')) {
+        return [];
+      }
       console.error('Error fetching race registrations:', error);
-      throw error;
+      return [];
     }
   }
 
@@ -488,7 +505,7 @@ export class ProvasService {
         athleteIds,
         distance
       });
-      return response.registrations;
+      return response; // Return full response including skipped array
     } catch (error) {
       console.error('Error registering athletes to race:', error);
       throw error;
