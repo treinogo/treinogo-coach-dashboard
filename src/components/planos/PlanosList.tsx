@@ -194,11 +194,21 @@ export function PlanosList({ onNavigate }: PlanosListProps) {
     aluno.email.toLowerCase().includes(buscaAluno.toLowerCase())
   );
 
-  const handleClonarPlano = (planoId: string) => {
-    const plano = planos.find(p => p.id === planoId);
-    if (plano) {
+  const handleClonarPlano = async (planoId: string) => {
+    try {
+      const plano = planos.find(p => p.id === planoId);
+      const clonedPlan = await PlanosService.clonePlan(planoId);
+
+      // Adiciona o plano clonado à lista
+      setPlanos(prev => [clonedPlan, ...prev]);
+
       toast.success('Plano clonado com sucesso', {
-        description: `Uma cópia de "${plano.name}" foi criada com o nome "${plano.name} - Cópia".`,
+        description: `Uma cópia de "${plano?.name}" foi criada com o nome "${clonedPlan.name}".`,
+      });
+    } catch (error) {
+      console.error('Erro ao clonar plano:', error);
+      toast.error('Erro ao clonar plano', {
+        description: 'Não foi possível criar uma cópia do plano. Tente novamente.',
       });
     }
   };

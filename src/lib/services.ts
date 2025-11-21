@@ -241,6 +241,16 @@ export class PlanosService {
     return api.delete(`/plans/${id}`);
   }
 
+  static async clonePlan(id: string) {
+    try {
+      const response = await api.post(`/plans/${id}/clone`, {});
+      return response.plan;
+    } catch (error) {
+      console.error('Erro ao clonar plano:', error);
+      throw error;
+    }
+  }
+
   static async assignPlanToAthletes(planId: string, athleteIds: string[]) {
     return api.post(`/plans/${planId}/assign-multiple`, { athleteIds });
   }
