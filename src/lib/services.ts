@@ -559,7 +559,7 @@ export class NotificationsService {
       const params = new URLSearchParams();
       if (unreadOnly) params.append('unreadOnly', 'true');
       params.append('limit', limit.toString());
-      
+
       const queryString = params.toString();
       const response = await api.get(`/notifications${queryString ? `?${queryString}` : ''}`);
       return response.notifications || [];
@@ -595,6 +595,39 @@ export class NotificationsService {
       return response;
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
+      throw error;
+    }
+  }
+}
+
+// User Profile Services
+export class UserService {
+  static async getProfile() {
+    try {
+      const response = await api.get('/users/me');
+      return response.user;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      throw error;
+    }
+  }
+
+  static async updateProfile(profileData: any) {
+    try {
+      const response = await api.put('/users/me', profileData);
+      return response.user;
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+      throw error;
+    }
+  }
+
+  static async updateAvatar(avatarUrl: string) {
+    try {
+      const response = await api.post('/users/me/avatar', { avatar: avatarUrl });
+      return response;
+    } catch (error) {
+      console.error('Error updating avatar:', error);
       throw error;
     }
   }

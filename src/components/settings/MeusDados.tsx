@@ -1,42 +1,79 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { User, Save, Camera, MapPin, Phone, Mail, Calendar, Briefcase, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
-import { Separator } from '../ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { professorLogado } from '../../lib/mockData';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { UserService } from '../../lib/services';
 
 export function MeusDados() {
   // Dados Pessoais
-  const [nome, setNome] = useState(professorLogado.nome);
-  const [email, setEmail] = useState(professorLogado.email);
-  const [telefone, setTelefone] = useState('(11) 98765-4321');
-  const [dataNascimento, setDataNascimento] = useState('1985-05-15');
-  const [cpf, setCpf] = useState('123.456.789-00');
-  const [profissao, setProfissao] = useState('Professor de Educação Física');
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [dataNascimento, setDataNascimento] = useState('');
+  const [cpf, setCpf] = useState('');
+  const [profissao, setProfissao] = useState('');
 
   // Endereço
-  const [cep, setCep] = useState('01310-100');
-  const [logradouro, setLogradouro] = useState('Avenida Paulista');
-  const [numero, setNumero] = useState('1578');
-  const [complemento, setComplemento] = useState('Sala 42');
-  const [bairro, setBairro] = useState('Bela Vista');
-  const [cidade, setCidade] = useState('São Paulo');
-  const [estado, setEstado] = useState('SP');
+  const [cep, setCep] = useState('');
+  const [logradouro, setLogradouro] = useState('');
+  const [numero, setNumero] = useState('');
+  const [complemento, setComplemento] = useState('');
+  const [bairro, setBairro] = useState('');
+  const [cidade, setCidade] = useState('');
+  const [estado, setEstado] = useState('');
 
   // Informações Adicionais
-  const [biografia, setBiografia] = useState(
-    'Professor de Educação Física com mais de 10 anos de experiência em treinamento de corrida de rua. Especializado em preparação para maratonas e meias maratonas.'
-  );
-  const [especializacao, setEspecializacao] = useState('Treinamento para Maratonas');
-  const [cref, setCref] = useState('CREF 123456-G/SP');
-  const [site, setSite] = useState('www.carlossilva.com.br');
+  const [biografia, setBiografia] = useState('');
+  const [especializacao, setEspecializacao] = useState('');
+  const [cref, setCref] = useState('');
+  const [site, setSite] = useState('');
 
-  const handleSalvarDados = () => {
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  // Carregar dados do usuário ao montar o componente
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const user = await UserService.getProfile();
+
+        setNome(user.name || '');
+        setEmail(user.email || '');
+        setTelefone(user.phone || '');
+        setDataNascimento(user.birthDate ? new Date(user.birthDate).toISOString().split('T')[0] : '');
+        setCpf(user.cpf || '');
+        setProfissao(user.profession || '');
+        setCep(user.cep || '');
+        setLogradouro(user.street || '');
+        setNumero(user.number || '');
+        setComplemento(user.complement || '');
+        setBairro(user.neighborhood || '');
+        setCidade(user.city || '');
+        setEstado(user.state || '');
+        setBiografia(user.biography || '');
+        setEspecializacao(user.specialization || '');
+        setCref(user.cref || '');
+        setSite(user.website || '');
+      } catch (error) {
+        console.error('Erro ao carregar dados do usuário:', error);
+        toast.error('Erro ao carregar dados', {
+          description: 'Não foi possível carregar seus dados. Tente novamente.',
+        });
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    loadUserData();
+  }, []);
+
+  const handleSalvarDados = async () => {
     if (!nome || !email) {
       toast.error('Erro ao salvar', {
         description: 'Preencha os campos obrigatórios: Nome e E-mail',
@@ -44,30 +81,40 @@ export function MeusDados() {
       return;
     }
 
-    // Em produção, aqui seria feita a chamada à API
-    console.log('Dados salvos:', {
-      nome,
-      email,
-      telefone,
-      dataNascimento,
-      cpf,
-      profissao,
-      cep,
-      logradouro,
-      numero,
-      complemento,
-      bairro,
-      cidade,
-      estado,
-      biografia,
-      especializacao,
-      cref,
-      site,
-    });
+    setLoading(true);
 
-    toast.success('✅ Dados atualizados!', {
-      description: 'Suas informações foram atualizadas com sucesso.',
-    });
+    try {
+      await UserService.updateProfile({
+        name: nome,
+        email,
+        telefone,
+        dataNascimento: dataNascimento || null,
+        cpf,
+        profissao,
+        cep,
+        logradouro,
+        numero,
+        complemento,
+        bairro,
+        cidade,
+        estado,
+        biografia,
+        especializacao,
+        cref,
+        site,
+      });
+
+      toast.success('Dados atualizados!', {
+        description: 'Suas informações foram atualizadas com sucesso.',
+      });
+    } catch (error) {
+      console.error('Erro ao salvar dados:', error);
+      toast.error('Erro ao salvar', {
+        description: 'Não foi possível salvar seus dados. Tente novamente.',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAlterarFoto = () => {
@@ -399,12 +446,16 @@ export function MeusDados() {
 
       {/* Botão Salvar */}
       <div className="flex justify-end gap-3 sticky bottom-6 bg-gray-50 py-4 -mx-8 px-8 border-t border-gray-200">
-        <Button variant="outline" onClick={() => window.location.reload()}>
+        <Button variant="outline" onClick={() => window.location.reload()} disabled={loading}>
           Cancelar
         </Button>
-        <Button onClick={handleSalvarDados} className="bg-blue-600 hover:bg-blue-700 min-w-[200px]">
+        <Button
+          onClick={handleSalvarDados}
+          className="bg-blue-600 hover:bg-blue-700 min-w-[200px]"
+          disabled={loading || initialLoading}
+        >
           <Save className="w-4 h-4 mr-2" />
-          Salvar Todas as Alterações
+          {loading ? 'Salvando...' : 'Salvar Todas as Alterações'}
         </Button>
       </div>
 
