@@ -167,28 +167,103 @@ export function Configuracoes() {
     const isCurrentlyConnected = getIntegrationStatus(platform);
     const platformName = platform.charAt(0) + platform.slice(1).toLowerCase();
 
-    try {
-      await api.post(`/users/me/integrations/${platform}`, {
-        connect: !isCurrentlyConnected
-      });
-
-      // Reload integrations to get updated data
-      await loadIntegrations();
-
-      if (!isCurrentlyConnected) {
-        toast.success(`${platformName} conectado!`, {
-          description: `Sua conta ${platformName} foi conectada com sucesso.`,
-        });
+    if (platform === 'STRAVA') {
+      if (isCurrentlyConnected) {
+        // Disconnect Strava
+        try {
+          await api.post('/integrations/strava/disconnect');
+          await loadIntegrations();
+          toast.success('Strava desconectado', {
+            description: 'Sua conta Strava foi desconectada.',
+          });
+        } catch (error) {
+          console.error('Erro ao desconectar Strava:', error);
+          toast.error('Erro ao desconectar', {
+            description: 'Não foi possível desconectar sua conta Strava.',
+          });
+        }
       } else {
-        toast.success(`${platformName} desconectado`, {
-          description: `Sua conta ${platformName} foi desconectada.`,
+        // Start Strava OAuth flow
+        try {
+          const response = await api.get('/integrations/strava/authorize');
+          if (response.authUrl) {
+            // Open Strava authorization in new window
+            const width = 600;
+            const height = 700;
+            const left = window.screenX + (window.outerWidth - width) / 2;
+            const top = window.screenY + (window.outerHeight - height) / 2;
+
+            const authWindow = window.open(
+              response.authUrl,
+              'Strava Authorization',
+              `width=${width},height=${height},left=${left},top=${top}`
+            );
+
+            // Listen for OAuth callback
+            const handleMessage = async (event: MessageEvent) => {
+              if (event.data.type === 'strava-auth' && event.data.code) {
+                try {
+                  await api.post('/integrations/strava/callback', {
+                    code: event.data.code,
+                  });
+
+                  await loadIntegrations();
+
+                  toast.success('Strava conectado!', {
+                    description: 'Sua conta Strava foi conectada com sucesso.',
+                  });
+
+                  // Close the auth window
+                  authWindow?.close();
+                } catch (error) {
+                  console.error('Erro no callback do Strava:', error);
+                  toast.error('Erro ao conectar', {
+                    description: 'Não foi possível completar a conexão com Strava.',
+                  });
+                }
+
+                window.removeEventListener('message', handleMessage);
+              }
+            };
+
+            window.addEventListener('message', handleMessage);
+
+            // Cleanup after 5 minutes
+            setTimeout(() => {
+              window.removeEventListener('message', handleMessage);
+            }, 5 * 60 * 1000);
+          }
+        } catch (error) {
+          console.error('Erro ao iniciar OAuth do Strava:', error);
+          toast.error('Erro ao conectar', {
+            description: 'Não foi possível iniciar a conexão com Strava.',
+          });
+        }
+      }
+    } else {
+      // For Polar and Garmin (not implemented yet)
+      try {
+        await api.post(`/users/me/integrations/${platform}`, {
+          connect: !isCurrentlyConnected
+        });
+
+        await loadIntegrations();
+
+        if (!isCurrentlyConnected) {
+          toast.success(`${platformName} conectado!`, {
+            description: `Sua conta ${platformName} foi conectada com sucesso.`,
+          });
+        } else {
+          toast.success(`${platformName} desconectado`, {
+            description: `Sua conta ${platformName} foi desconectada.`,
+          });
+        }
+      } catch (error) {
+        console.error(`Erro ao ${isCurrentlyConnected ? 'desconectar' : 'conectar'} ${platformName}:`, error);
+        toast.error('Erro na integração', {
+          description: `Não foi possível ${isCurrentlyConnected ? 'desconectar' : 'conectar'} ${platformName}.`,
         });
       }
-    } catch (error) {
-      console.error(`Erro ao ${isCurrentlyConnected ? 'desconectar' : 'conectar'} ${platformName}:`, error);
-      toast.error('Erro na integração', {
-        description: `Não foi possível ${isCurrentlyConnected ? 'desconectar' : 'conectar'} ${platformName}.`,
-      });
     }
   };
 

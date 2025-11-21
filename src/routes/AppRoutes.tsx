@@ -10,6 +10,7 @@ import { Assinaturas } from '../components/settings/Assinaturas';
 import { ConvidarAmigo } from '../components/settings/ConvidarAmigo';
 import { Configuracoes } from '../components/settings/Configuracoes';
 import { MeusDados } from '../components/settings/MeusDados';
+import { StravaCallback } from '../components/auth/StravaCallback';
 
 interface AppRoutesProps {
   onNavigate: (page: string) => void;
@@ -31,6 +32,7 @@ export function AppRoutes({ onNavigate }: AppRoutesProps) {
       <Route path="/configuracoes/meus-dados" element={<MeusDados />} />
       <Route path="/configuracoes/assinaturas" element={<Assinaturas />} />
       <Route path="/configuracoes/convidar-amigo" element={<ConvidarAmigo />} />
+      <Route path="/auth/strava/callback" element={<StravaCallback />} />
     </Routes>
   );
 }

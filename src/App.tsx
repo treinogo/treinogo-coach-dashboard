@@ -11,14 +11,8 @@ function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  if (isLoading) {
-    return <LoadingSpinner />;
-  }
-
-  if (!isAuthenticated) {
-    window.location.href = 'http://localhost:5173?message=' + encodeURIComponent('Você precisa estar autenticado para acessar o dashboard');
-    return <LoadingSpinner />;
-  }
+  // Allow OAuth callback routes without authentication
+  const isOAuthCallback = location.pathname.startsWith('/auth/');
 
   const handleNavigate = (page: string) => {
     // Mapear os nomes das páginas antigas para as rotas
@@ -135,6 +129,30 @@ function AppContent() {
         return 'dashboard';
     }
   };
+
+  // Check authentication
+  if (isLoading && !isOAuthCallback) {
+    return <LoadingSpinner />;
+  }
+
+  if (!isAuthenticated && !isOAuthCallback) {
+    window.location.href = 'http://localhost:5173?message=' + encodeURIComponent('Você precisa estar autenticado para acessar o dashboard');
+    return <LoadingSpinner />;
+  }
+
+  // Render OAuth callback without layout
+  if (isOAuthCallback) {
+    return (
+      <>
+        <AppRoutes onNavigate={handleNavigate} />
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+        />
+      </>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
