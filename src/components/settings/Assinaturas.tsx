@@ -1,109 +1,87 @@
-import { Check, Crown, Zap, Rocket, Star, TrendingUp } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { useEffect, useState } from 'react';
+import { Check, Crown, Zap, Rocket, Star, TrendingUp, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { SubscriptionService } from '../../lib/services';
+
+interface Plan {
+  id: string;
+  name: string;
+  price: number | null;
+  period: string;
+  features: string[];
+  popular?: boolean;
+}
+
+const iconMap: Record<string, any> = {
+  free: Star,
+  starter: Zap,
+  pro: Crown,
+  business: Rocket,
+  enterprise: TrendingUp,
+};
+
+const colorMap: Record<string, { cor: string; bgCor: string; borderCor: string }> = {
+  free: { cor: 'text-gray-600', bgCor: 'bg-gray-50', borderCor: 'border-gray-200' },
+  starter: { cor: 'text-blue-600', bgCor: 'bg-blue-50', borderCor: 'border-blue-200' },
+  pro: { cor: 'text-orange-600', bgCor: 'bg-orange-50', borderCor: 'border-orange-300' },
+  business: { cor: 'text-purple-600', bgCor: 'bg-purple-50', borderCor: 'border-purple-200' },
+  enterprise: { cor: 'text-indigo-600', bgCor: 'bg-indigo-50', borderCor: 'border-indigo-200' },
+};
 
 export function Assinaturas() {
-  const planoAtual = 'pro'; // Simulando o plano atual do usuário
+  const [planoAtual, setPlanoAtual] = useState<string>('free');
+  const [planos, setPlanos] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState<string | null>(null);
 
-  const planos = [
-    {
-      id: 'free',
-      nome: 'Gratuito',
-      icon: Star,
-      preco: 0,
-      periodo: 'Sempre grátis',
-      cor: 'text-gray-600',
-      bgCor: 'bg-gray-50',
-      borderCor: 'border-gray-200',
-      recursos: [
-        'Até 5 alunos',
-        '1 plano de treino',
-        'Relatórios básicos',
-        'Suporte por email',
-      ],
-    },
-    {
-      id: 'starter',
-      nome: 'Starter',
-      icon: Zap,
-      preco: 49.90,
-      periodo: '/mês',
-      cor: 'text-blue-600',
-      bgCor: 'bg-blue-50',
-      borderCor: 'border-blue-200',
-      recursos: [
-        'Até 20 alunos',
-        'Planos ilimitados',
-        'Relatórios avançados',
-        'Desafios e gamificação',
-        'Suporte prioritário',
-      ],
-    },
-    {
-      id: 'pro',
-      nome: 'Pro',
-      icon: Crown,
-      preco: 99.90,
-      periodo: '/mês',
-      cor: 'text-orange-600',
-      bgCor: 'bg-orange-50',
-      borderCor: 'border-orange-300',
-      popular: true,
-      recursos: [
-        'Até 50 alunos',
-        'Planos ilimitados',
-        'Relatórios personalizados',
-        'Desafios e gamificação',
-        'Testes físicos integrados',
-        'Calendário de provas',
-        'Suporte 24/7',
-      ],
-    },
-    {
-      id: 'business',
-      nome: 'Business',
-      icon: Rocket,
-      preco: 199.90,
-      periodo: '/mês',
-      cor: 'text-purple-600',
-      bgCor: 'bg-purple-50',
-      borderCor: 'border-purple-200',
-      recursos: [
-        'Até 150 alunos',
-        'Tudo do Pro +',
-        'API de integração',
-        'Branding personalizado',
-        'Múltiplos professores',
-        'Análises com IA',
-        'Gerente de conta dedicado',
-      ],
-    },
-    {
-      id: 'enterprise',
-      nome: 'Enterprise',
-      icon: TrendingUp,
-      preco: null,
-      periodo: 'Personalizado',
-      cor: 'text-indigo-600',
-      bgCor: 'bg-indigo-50',
-      borderCor: 'border-indigo-200',
-      recursos: [
-        'Alunos ilimitados',
-        'Tudo do Business +',
-        'Infraestrutura dedicada',
-        'SLA garantido',
-        'Treinamento da equipe',
-        'Consultoria estratégica',
-        'Suporte premium',
-      ],
-    },
-  ];
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const handleUpgrade = (planoId: string) => {
-    console.log('Upgrade para:', planoId);
-    // Em produção, redirecionaria para página de pagamento
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [subscription, plans] = await Promise.all([
+        SubscriptionService.getCurrentSubscription(),
+        SubscriptionService.getPlans(),
+      ]);
+      setPlanoAtual(subscription?.planType?.toLowerCase() || 'free');
+      setPlanos(plans);
+    } catch (error) {
+      console.error('Error loading subscription data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const handleUpgrade = async (planoId: string) => {
+    if (planoId === 'enterprise') {
+      window.open('mailto:contato@treinogo.com?subject=Interesse no plano Enterprise', '_blank');
+      return;
+    }
+
+    try {
+      setUpdating(planoId);
+      await SubscriptionService.updateSubscription(planoId.toUpperCase());
+      setPlanoAtual(planoId);
+      alert('Plano atualizado com sucesso!');
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      alert('Erro ao atualizar plano. Tente novamente.');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -128,7 +106,8 @@ export function Assinaturas() {
       {/* Grid de Planos */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         {planos.map((plano) => {
-          const Icon = plano.icon;
+          const Icon = iconMap[plano.id] || Star;
+          const colors = colorMap[plano.id] || colorMap.free;
           const isAtual = plano.id === planoAtual;
 
           return (
@@ -153,27 +132,27 @@ export function Assinaturas() {
               )}
 
               <CardHeader>
-                <div className={`w-12 h-12 ${plano.bgCor} rounded-lg flex items-center justify-center mb-4`}>
-                  <Icon className={`w-6 h-6 ${plano.cor}`} />
+                <div className={`w-12 h-12 ${colors.bgCor} rounded-lg flex items-center justify-center mb-4`}>
+                  <Icon className={`w-6 h-6 ${colors.cor}`} />
                 </div>
-                <CardTitle className="text-xl">{plano.nome}</CardTitle>
+                <CardTitle className="text-xl">{plano.name}</CardTitle>
                 <div className="pt-4">
-                  {plano.preco !== null ? (
+                  {plano.price !== null ? (
                     <>
                       <span className="text-3xl text-gray-900">
-                        R$ {plano.preco.toFixed(2).replace('.', ',')}
+                        R$ {plano.price.toFixed(2).replace('.', ',')}
                       </span>
-                      <span className="text-gray-600">{plano.periodo}</span>
+                      <span className="text-gray-600">{plano.period}</span>
                     </>
                   ) : (
-                    <span className="text-2xl text-gray-900">{plano.periodo}</span>
+                    <span className="text-2xl text-gray-900">{plano.period}</span>
                   )}
                 </div>
               </CardHeader>
 
               <CardContent className="space-y-4">
                 <ul className="space-y-3">
-                  {plano.recursos.map((recurso, index) => (
+                  {plano.features.map((recurso, index) => (
                     <li key={index} className="flex items-start gap-2 text-sm">
                       <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
                       <span className="text-gray-700">{recurso}</span>
@@ -189,8 +168,12 @@ export function Assinaturas() {
                   <Button
                     className="w-full bg-blue-600 hover:bg-blue-700"
                     onClick={() => handleUpgrade(plano.id)}
+                    disabled={updating === plano.id}
                   >
-                    {plano.preco === null
+                    {updating === plano.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : null}
+                    {plano.price === null
                       ? 'Entrar em Contato'
                       : plano.id === 'free'
                       ? 'Downgrade'

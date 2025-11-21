@@ -653,6 +653,49 @@ export class ReferralService {
   }
 }
 
+// Subscription Services
+export class SubscriptionService {
+  static async getCurrentSubscription() {
+    try {
+      const response = await api.get('/subscriptions/current');
+      return response.subscription;
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+      throw error;
+    }
+  }
+
+  static async getPlans() {
+    try {
+      const response = await api.get('/subscriptions/plans');
+      return response.plans;
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+      throw error;
+    }
+  }
+
+  static async updateSubscription(planType: string) {
+    try {
+      const response = await api.post('/subscriptions/update', { planType });
+      return response;
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      throw error;
+    }
+  }
+
+  static async cancelSubscription() {
+    try {
+      const response = await api.post('/subscriptions/cancel', {});
+      return response;
+    } catch (error) {
+      console.error('Error cancelling subscription:', error);
+      throw error;
+    }
+  }
+}
+
 // User Profile Services
 export class UserService {
   static async getProfile() {
