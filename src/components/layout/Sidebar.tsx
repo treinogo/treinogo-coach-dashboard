@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { professorLogado } from '../../lib/mockData';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface SidebarProps {
   currentPage: string;
@@ -18,6 +19,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
+  const { logout } = useAuth();
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
@@ -166,12 +168,8 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
               Configurações
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              onClick={() => {
-                toast.success('Até logo!', {
-                  description: 'Você foi desconectado com sucesso.',
-                });
-              }}
+            <DropdownMenuItem
+              onClick={() => logout()}
               className="text-red-600 focus:text-red-700 focus:bg-red-50"
             >
               <LogOut className="w-4 h-4 mr-2" />

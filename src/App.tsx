@@ -136,7 +136,7 @@ function AppContent() {
   }
 
   if (!isAuthenticated && !isOAuthCallback) {
-    const landingPageUrl = import.meta.env.VITE_LANDING_PAGE_URL || 'http://localhost:5173';
+    const landingPageUrl = import.meta.env.VITE_LANDING_PAGE_URL || 'http://localhost:3002';
     window.location.href = `${landingPageUrl}?message=${encodeURIComponent('Você precisa estar autenticado para acessar o dashboard')}`;
     return <LoadingSpinner />;
   }

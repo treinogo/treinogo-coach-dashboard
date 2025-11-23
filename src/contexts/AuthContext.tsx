@@ -30,61 +30,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // First, check if there's token and user data in URL params (from redirect)
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlToken = urlParams.get('token');
-        const urlUserData = urlParams.get('user');
-        
-        if (urlToken && urlUserData) {
-          try {
-            const decodedUser = JSON.parse(decodeURIComponent(urlUserData));
-            const decodedToken = decodeURIComponent(urlToken);
-            
-            // Save to localStorage
-            localStorage.setItem('token', decodedToken);
-            localStorage.setItem('user', JSON.stringify(decodedUser));
-            
-            // Clean URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            setUser(decodedUser);
-            setIsAuthenticated(true);
-            setIsLoading(false);
-            return;
-          } catch (e) {
-            console.error('Error parsing URL params:', e);
-          }
-        }
-
-        // Check existing token in localStorage
+        // Check if user is authenticated via cookie
         const isValid = await authService.validateToken();
+
         if (isValid) {
-          const currentUser = authService.getCurrentUser();
+          const currentUser = await authService.getCurrentUser();
           setUser(currentUser);
           setIsAuthenticated(true);
-        } else {
-          // Try automatic login with coach credentials for development
-          try {
-            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-            const loginResponse = await fetch(`${apiBaseUrl}/auth/login`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: 'coach@treinogo.com',
-                password: '123456'
-              })
-            });
-
-            if (loginResponse.ok) {
-              const { token, user: authUser } = await loginResponse.json();
-              localStorage.setItem('token', token);
-              localStorage.setItem('user', JSON.stringify(authUser));
-              setUser(authUser);
-              setIsAuthenticated(true);
-            }
-          } catch (error) {
-            console.error('Auto-login failed:', error);
-          }
         }
       } catch (error) {
         console.error('Auth check failed:', error);
@@ -96,10 +48,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     checkAuth();
   }, []);
 
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
     setIsAuthenticated(false);
-    authService.logout();
+    await authService.logout();
   };
 
   const value = {

@@ -171,7 +171,7 @@ export function Header({ title, subtitle }: HeaderProps) {
                   variant="ghost"
                   size="sm"
                   className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-                  onClick={logout}
+                  onClick={() => logout()}
                 >
                   <LogOut className="w-4 h-4 mr-2" />
                   Sair

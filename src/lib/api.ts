@@ -16,14 +16,12 @@ class ApiClient {
   }
 
   private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
-    const token = getAuthToken();
-    
     const config: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       },
+      credentials: 'include', // Include cookies in requests
       ...options,
     };
 
@@ -81,35 +79,37 @@ export const getStoredUser = () => {
 
 // Auth service
 export const authService = {
-  isAuthenticated(): boolean {
-    return !!getAuthToken();
+  async getCurrentUser() {
+    try {
+      const response = await api.get('/users/me');
+      // Backend returns { user: {...} }, we need just the user object
+      return response.user || response;
+    } catch (error) {
+      console.error('Failed to get current user:', error);
+      return null;
+    }
   },
 
-  getCurrentUser() {
-    return getStoredUser();
-  },
-
-  logout(): void {
-    removeAuthToken();
-    const landingUrl = import.meta.env.VITE_LANDING_PAGE_URL || 'http://localhost:5173';
-    window.location.href = landingUrl;
+  async logout(): Promise<void> {
+    try {
+      console.log('🚪 Calling logout API...');
+      await api.post('/auth/logout', {});
+      console.log('✅ Logout API successful');
+    } catch (error) {
+      console.error('❌ Logout error:', error);
+    } finally {
+      const landingUrl = import.meta.env.VITE_LANDING_PAGE_URL || 'http://localhost:3002';
+      console.log('🔀 Redirecting to landing page:', landingUrl);
+      window.location.href = landingUrl;
+    }
   },
 
   async validateToken(): Promise<boolean> {
     try {
-      const token = getAuthToken();
-      if (!token) return false;
-
-      // Try to make an authenticated request to validate the token
-      // Using a simpler endpoint that we know exists
-      await api.get('/users/me');
-      
-      const user = getStoredUser();
+      const user = await this.getCurrentUser();
       return !!user && user.role === 'COACH';
     } catch (error) {
       console.error('Token validation failed:', error);
-      // If validation fails, clean up stored data but don't remove in dev
-      // removeAuthToken();
       return false;
     }
   }
